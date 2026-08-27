@@ -1,0 +1,29 @@
+{
+    "folders":
+    [
+        {
+            "path": "./",
+        }
+    ],
+    "settings": {
+        "python_interpreter": "${project_path}/.venv/bin/python3",
+    },
+    "build_systems":
+    [
+
+        {
+            "file_regex": "^[ ]*File \"(...*?)\", line ([0-9]*)",
+            "name": "venv Python file",
+            "selector": "source.python",
+            "shell_cmd": "source ${project_path}/.venv/bin/activate && ${project_path}/.venv/bin/python3 -u \"$file\""
+        },
+    ],
+    "debugger_configurations": [
+        {
+            "name": "Run file",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+        }
+    ],
+}

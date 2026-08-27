@@ -1,0 +1,9 @@
+{
+    "*": {
+        ">3000": [
+            "ptyprocess",
+            "pyte",
+            "wcwidth"
+        ]
+    }
+}

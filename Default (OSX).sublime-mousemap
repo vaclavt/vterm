@@ -1,0 +1,14 @@
+[
+    {
+        "button": "scroll_up",
+        "command": "vterm_scroll",
+        "args": {"up": true},
+        "context": [{"key": "vterm_view.wheel_captured", "operand": true}]
+    },
+    {
+        "button": "scroll_down",
+        "command": "vterm_scroll",
+        "args": {"up": false},
+        "context": [{"key": "vterm_view.wheel_captured", "operand": true}]
+    }
+]

@@ -1,0 +1,6 @@
+[
+    { "caption": "vterm: Open Terminal", "command": "vterm_open" },
+    { "caption": "vterm: Open Terminal in Project Folder", "command": "vterm_open_terminal_project_folder" },
+    { "caption": "vterm: Clear Screen", "command": "vterm_clear_screen" },
+    { "caption": "vterm: Select Theme", "command": "vterm_select_theme" }
+]

@@ -1,0 +1,34 @@
+{
+    // close the tab automatically when the process exits
+    "auto_close": true,
+
+    // number of scrollback lines kept in the view
+    "scrollback_history_size": 50000,
+
+    // ED 3 (erase saved lines) drops the scrollback, as a terminal should.
+    // Agents repaint with it and take your history with them, so it is off;
+    // cmd+shift+k is then the only way to empty the tab.
+    "honor_erase_scrollback": false,
+
+    "min_columns": 20,
+    "max_columns": 500,
+
+    // colour palette: "default", "homebrew", "pro", "slate", or null to
+    // follow the active Sublime colour scheme. Applies to open tabs too.
+    "theme": null,
+
+    // override any of the 16 ANSI colors, e.g. {"red": "#ff0000"}
+    // applied on top of the theme
+    "ansi_colors": {},
+
+    // External terminal for "vterm: Open Terminal in Project Folder".
+    // %CWD% in parameters is replaced with the project folder.
+    "terminal": "/opt/homebrew/bin/kitty",
+    "parameters": ["-d", "%CWD%"],
+
+    // Apple Terminal instead of kitty:
+    // "terminal": "/usr/bin/open",
+    // "parameters": ["-a", "Terminal", "%CWD%"],
+
+    "debug": false
+}
