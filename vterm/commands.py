@@ -67,15 +67,16 @@ class VtermOpenTerminalProjectFolderCommand(sublime_plugin.WindowCommand):
 
     def run(self):
         """Resolve the folder, substitute %CWD%, spawn the configured terminal."""
+        folders = self.window.folders()
+        if not folders:
+            return
+        cwd = folders[0]
         view = self.window.active_view()
         if view and view.file_name():
             path = view.file_name()
-            folders = [f for f in self.window.folders() if path.find(f + os.sep) == 0]
-            cwd = folders[0] if folders else os.path.dirname(path)
-        elif self.window.folders():
-            cwd = self.window.folders()[0]
-        else:
-            return
+            matches = [f for f in folders if path.find(f.rstrip(os.sep) + os.sep) == 0]
+            if matches:
+                cwd = max(matches, key=len)
 
         s = settings()
         terminal = s.get("terminal")
@@ -83,12 +84,19 @@ class VtermOpenTerminalProjectFolderCommand(sublime_plugin.WindowCommand):
             sublime.error_message('vterm: set "terminal" in vterm.sublime-settings')
             return
 
-        parameters = [p.replace("%CWD%", cwd) for p in s.get("parameters", [])]
+        parameters = s.get("parameters", [])
+        if not isinstance(parameters, list) or not all(isinstance(p, str) for p in parameters):
+            sublime.error_message('vterm: "parameters" must be a list of strings')
+            return
+        parameters = [p.replace("%CWD%", cwd) for p in parameters]
         try:
-            subprocess.Popen([terminal] + parameters, cwd=cwd)
+            subprocess.Popen(
+                [terminal] + parameters, cwd=cwd, start_new_session=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
         except OSError:
             LOG.exception("failed to start external terminal: terminal=%s", terminal)
-            sublime.error_message(f"vterm: could not start {terminal}")
+            sublime.error_message("vterm: could not start {}".format(terminal))
 
     def is_visible(self):
         """Hide the palette entry when there is no project folder."""
@@ -201,7 +209,7 @@ class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
         items = [["No theme", "follow the Sublime color scheme"]]
         for name in self.choices[1:]:
             theme = THEMES[name]
-            items.append([name, f"{theme["foreground"]} on {theme["background"]}"])
+            items.append([name, "{} on {}".format(theme["foreground"], theme["background"])])
 
         current = self.choices.index(self.original) if self.original in self.choices else 0
         self.window.show_quick_panel(items, self._done, selected_index=current, on_highlight=self._preview)
@@ -262,7 +270,7 @@ class VtermCleanupCommand(sublime_plugin.TextCommand):
         terminal.process.isalive()
         exitstatus = terminal.process.exitstatus
         if exitstatus is not None:
-            view.run_command("append", {"characters": f"\n[process exited with code {exitstatus}]"})
+            view.run_command("append", {"characters": "\n[process exited with code {}]".format(exitstatus)})
         view.sel().clear()
 
 

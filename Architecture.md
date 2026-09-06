@@ -331,7 +331,9 @@ replaces both together.
 
 **Plugin settings** (`vterm.sublime-settings`, read through the cached `settings()`
 handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`, `min_columns`,
-`max_columns`, `theme`, `ansi_colors`, `debug`. `honor_erase_scrollback` is off, so ED 3
+`max_columns`, `theme`, `ansi_colors`, `terminal`, `parameters`, `debug`. `terminal` and
+`parameters` name the external terminal spawned by *vterm: Open Terminal in Project
+Folder* (`%CWD%` in `parameters` becomes the project folder). `honor_erase_scrollback` is off, so ED 3
 blanks the screen without dropping the scrollback: pi and Claude Code repaint by erasing
 saved lines, which would take the history with them (`cmd+shift+k` still empties the tab). Changing `theme` fires `SchemeManager.reload`, which rebuilds the
 palette and restyles open terminals in place.
