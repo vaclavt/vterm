@@ -10,6 +10,10 @@
     // cmd+shift+k is then the only way to empty the tab.
     "honor_erase_scrollback": false,
 
+    // modifier that turns PgUp/PgDn into a page scroll of the view:
+    // "shift", "ctrl", "alt" or a "+" combination; null sends both to the app
+    "page_scroll_modifier": "shift",
+
     "min_columns": 20,
     "max_columns": 500,
 
@@ -23,12 +27,12 @@
 
     // External terminal for "vterm: Open Terminal in Project Folder".
     // %CWD% in parameters is replaced with the project folder.
-    // "terminal": "/usr/bin/open",
-    // "parameters": ["-a", "Terminal", "%CWD%"],
+    "terminal": "/usr/bin/open",
+    "parameters": ["-a", "Terminal", "%CWD%"],
 
     // kitty instead of Apple Terminal:
-    "terminal": "/opt/homebrew/bin/kitty",
-    "parameters": ["-d", "%CWD%"],
+    // "terminal": "/opt/homebrew/bin/kitty",
+    // "parameters": ["-d", "%CWD%"],
 
     "debug": false
 }

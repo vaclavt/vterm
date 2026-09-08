@@ -6,7 +6,7 @@ import subprocess
 import sublime
 import sublime_plugin
 
-from .render import CONTINUATION
+from .render import CONTINUATION, scroll_page
 from .scheme import SCHEME_PATH, scheme_manager
 from .terminal import Terminal
 from .themes import THEMES
@@ -143,10 +143,30 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
         terminal = Terminal.from_id(self.view.id())
         if not terminal or not terminal.alive:
             return
+        if self.page_scrolled(terminal, **kwargs):
+            return
         # drop any selection so the caret follows the terminal cursor
         self.view.sel().clear()
         self.view.run_command("vterm_show_cursor")
         terminal.send_key(**kwargs)
+
+    def page_scrolled(self, terminal, key=None, **mods):
+        """Page the view one screen over the scrollback, before vterm_show_cursor,
+        whose scroll would pull the viewport straight back down. The alt screen is
+        folded and has no scroll range, so an app there keeps the key.
+
+        Returns:
+            bool: the view consumed the key; False sends it to the app.
+        """
+        # the cheap tests first: this runs on every keystroke
+        if key not in ("pageup", "pagedown") or not mods or terminal.screen.alternate_buffer_mode:
+            return False
+        modifier = settings().get("page_scroll_modifier", "shift")
+        # exact match: ctrl+shift+pageup still belongs to the app
+        if not modifier or {m for m, on in mods.items() if on} != set(modifier.split("+")):
+            return False
+        scroll_page(self.view, terminal, up=(key == "pageup"))
+        return True
 
 
 class VtermCopyCommand(sublime_plugin.TextCommand):

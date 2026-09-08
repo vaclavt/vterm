@@ -28,7 +28,7 @@ Command palette:
 - **vterm: Open Terminal** — login shell in a tab (cwd = first project folder,
   else the active file's directory, else `~`)
 - **vterm: Open Terminal in Project Folder** — opens the external terminal from
-  the settings (kitty by default) in the project folder of the active file
+  the settings (Apple Terminal by default) in the project folder of the active file
 - **vterm: Clear Screen** (`cmd+shift+k`) — empties the tab, its screen and all
   scrollback, then asks the app to redraw, so the tab looks freshly started
 - **vterm: Select Theme** — pick a colour palette, previewing each as you move
@@ -41,7 +41,9 @@ takes `cmd`, `cwd`, `env` and `title`:
 { "caption": "vterm: pi", "command": "vterm_open", "args": {"cmd": ["pi"], "title": "pi"} }
 ```
 
-Keys: Shift+Enter sends `ESC CR` (newline in both agents). Copy/paste use the
+Keys: Shift+Enter sends `ESC CR` (newline in both agents). Shift+PgUp/PgDn page
+the view over the scrollback instead of reaching the app, as xterm and kitty do
+— `page_scroll_modifier` moves that to Ctrl, or turns it off. Copy/paste use the
 normal Sublime keys, and pastes are bracketed when the app asks for it. Copying
 re-joins soft-wrapped lines. The wheel scrolls the view normally; while the app
 tracks the mouse the wheel and left click go to it instead, and on the alternate
@@ -68,11 +70,12 @@ zle -N zle-line-init
 
 `vterm.sublime-settings`: `auto_close` (close the tab when the process exits; off
 leaves it open with a `[process exited with code N]` line),
-`scrollback_history_size`, `min_columns` / `max_columns`,
+`scrollback_history_size`, `page_scroll_modifier` (the modifier for the PgUp/PgDn
+page scroll; `null` gives both keys to the app), `min_columns` / `max_columns`,
 `terminal` / `parameters` (the external terminal for *vterm: Open Terminal in
 Project Folder*; `%CWD%` in `parameters` is replaced with the project folder,
-defaulting to kitty), `debug` (verbose logging
-to the ST console), plus the colours:
+defaulting to Apple Terminal, with kitty commented out beside it), `debug`
+(verbose logging to the ST console), plus the colours:
 
 - `theme` — `"default"` (Terminal.app Basic, light), `"homebrew"`, `"pro"`,
   `"slate"`, or `null` to follow the active Sublime colour scheme. Set it with

@@ -7,14 +7,21 @@ import _bootstrap  # sets sys.path for the imports below
 from _bootstrap import FakeProcess
 
 import sublime
+from vterm.commands import VtermKeypressCommand
 from vterm.emulator import VtScreen, VtStream
 from vterm.mouse import VtermMouseClickCommand, VtermScrollCommand
 from vterm.render import (
     CHUNK,
     VtermRenderCommand,
     focus_cursor,
+    following,
+    scroll_to_cursor,
 )
 from vterm.terminal import Terminal
+from vterm.utils import SETTINGS_FILE
+
+
+LINE_HEIGHT = 20
 
 
 class FakeSelection(list):
@@ -35,6 +42,8 @@ class FakeView:
         self.commands = []
         self.folds = []
         self._name = ""
+        self.viewport = (0, 0)
+        self.viewport_rows = 5
 
     def size(self):
         return len(self.text)
@@ -113,10 +122,23 @@ class FakeView:
         return sublime.load_settings("fake")
 
     def viewport_position(self):
-        return (0, 0)
+        return self.viewport
+
+    def set_viewport_position(self, xy, animate=True):
+        self.viewport = xy
 
     def line_height(self):
-        return 20
+        return LINE_HEIGHT
+
+    # one layout row per line; the viewport shows viewport_rows of them
+    def layout_extent(self):
+        return (0, (self.text.count("\n") + 1) * LINE_HEIGHT)
+
+    def viewport_extent(self):
+        return (0, self.viewport_rows * LINE_HEIGHT)
+
+    def text_to_layout(self, point):
+        return (0, self.rowcol(point)[0] * LINE_HEIGHT)
 
     def name(self):
         return self._name
@@ -397,6 +419,79 @@ scroll.run(None, up=True)
 assert terminal.process.written == "", repr(terminal.process.written)
 
 print("alternate scroll tests passed (3 lines per tick: arrows on alt screen, SGR when tracking, inert otherwise)")
+
+
+# PgUp/PgDn with the configured modifier pages the view instead of reaching the
+# app; every other combination is sent as before. 24 scrollback rows above an
+# 8-row screen, viewport at the follow anchor
+terminal, stream = make_terminal(rows=8, cols=20)
+Terminal._terminals[id(terminal)] = terminal
+terminal.view.id = lambda: id(terminal)
+terminal.view.text = "\n".join("row {}".format(i) for i in range(32))
+terminal.view.viewport_rows = terminal.screen.lines
+terminal.offset = 24
+keypress = VtermKeypressCommand.__new__(VtermKeypressCommand)
+keypress.view = terminal.view
+plugin_settings = sublime.load_settings(SETTINGS_FILE)
+PAGE = terminal.screen.lines * LINE_HEIGHT
+anchor = 24 * LINE_HEIGHT
+
+
+def press(**kwargs):
+    terminal.process.written = ""
+    keypress.run(None, **kwargs)
+    return terminal.view.viewport_position()[1]
+
+
+scroll_to_cursor(terminal.view, terminal)
+assert following(terminal.view, terminal)
+
+y = press(key="pageup", shift=True)
+assert y == anchor - PAGE, y
+assert terminal.process.written == "", repr(terminal.process.written)
+# output must not yank the viewport back while the user reads
+assert not following(terminal.view, terminal)
+
+# never above the top, never below the anchor
+for _ in range(3):
+    y = press(key="pageup", shift=True)
+assert y == 0, y
+for _ in range(5):
+    y = press(key="pagedown", shift=True)
+assert y == anchor, y
+# paging back onto the anchor re-opens the gate
+assert following(terminal.view, terminal)
+
+# a bare or differently modified key still belongs to the app
+press(key="pageup")
+assert terminal.process.written == "\x1b[5~", repr(terminal.process.written)
+press(key="pageup", ctrl=True)
+assert terminal.process.written == "\x1b[5;5~", repr(terminal.process.written)
+y = press(key="pageup", ctrl=True, shift=True)
+assert terminal.process.written == "\x1b[5;6~", repr(terminal.process.written)
+assert y == anchor, "the app's keys must not scroll"
+
+# the alt screen is folded away: nothing to page, so the app keeps the key
+stream.feed("\x1b[?1049h")
+press(key="pageup", shift=True)
+assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+stream.feed("\x1b[?1049l")
+
+# the modifier is configurable, and null hands both keys back to the app
+plugin_settings.set("page_scroll_modifier", "ctrl")
+y = press(key="pageup", ctrl=True)
+assert y == anchor - PAGE, y
+press(key="pageup", shift=True)
+assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+
+plugin_settings.set("page_scroll_modifier", None)
+press(key="pageup", shift=True)
+assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+press(key="pagedown", ctrl=True)
+assert terminal.process.written == "\x1b[6;5~", repr(terminal.process.written)
+plugin_settings.set("page_scroll_modifier", "shift")
+
+print("page scroll tests passed (one screen per press, clamped to the anchor, configurable modifier)")
 
 
 # a click in an unfocused group must focus the tab instead of reporting: we

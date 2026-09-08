@@ -172,10 +172,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             # drop the artefact; focus_cursor re-places the caret
             view.sel().clear()
 
-        # follow-scroll gate: viewport_y is where the last auto-scroll left the
-        # view, so a smaller current position means the user scrolled up. Then
-        # trimming, the caret and the scroll are all skipped, keeping their place
-        if terminal.viewport_y < view.viewport_position()[1] + view.line_height():
+        # all skipped once the user scrolls up, so their place survives the frame
+        if following(view, terminal):
             self.trim_trailing_spaces(edit, terminal)
             self.trim_history(edit, terminal)
             if focused:
@@ -511,15 +509,39 @@ def focus_cursor(view, edit, terminal):
     sel.add(sublime.Region(pt, pt))
 
 
-def scroll_to_cursor(view, terminal):
-    """Follow the output: pin the viewport to the bottom of the live screen."""
-    terminal._scroll_pending = False
+def following(view, terminal):
+    """Whether the viewport still sits where the last auto-scroll left it; above
+    that means the user scrolled up by hand."""
+    return terminal.viewport_y < view.viewport_position()[1] + view.line_height()
+
+
+def bottom_y(view, terminal):
+    """Viewport y that pins the bottom of the live screen to the bottom of the view."""
     # layout_extent is maintained incrementally; text_to_layout(size()) forced
     # a whole-buffer layout on every call
     viewport_y = view.layout_extent()[1] - view.viewport_extent()[1]
     offset_y = view.text_to_layout(view.text_point(terminal.offset, 0))[1]
-    y = max(offset_y, viewport_y)
+    return max(offset_y, viewport_y)
+
+
+def scroll_to_cursor(view, terminal):
+    """Follow the output: pin the viewport to the bottom of the live screen."""
+    terminal._scroll_pending = False
+    y = bottom_y(view, terminal)
     terminal.viewport_y = y
+    view.set_viewport_position((0, y), False)
+
+
+def scroll_page(view, terminal, up):
+    """Move the viewport one screen over the scrollback.
+
+    Not sublime's scroll_lines: it animates, and while the viewport is still
+    within a line of where it started the follow-scroll gate reads that as "at
+    the bottom" and pulls it back down.
+    """
+    delta = terminal.screen.lines * view.line_height()
+    y = view.viewport_position()[1]
+    y = max(y - delta, 0) if up else min(y + delta, bottom_y(view, terminal))
     view.set_viewport_position((0, y), False)
 
 

@@ -42,7 +42,7 @@ Constraints it works under:
 
 | File | Role |
 |---|---|
-| `vterm.sublime-settings` | Defaults for the ten plugin settings. |
+| `vterm.sublime-settings` | Defaults for the eleven plugin settings. |
 | `vterm.sublime-commands` | Four palette entries: open, open terminal in project folder, clear screen, select theme. |
 | `vterm.sublime-syntax` | An intentionally empty hidden syntax, so terminal text is never tokenized. |
 | `Default.sublime-keymap` | 245 generated bindings. **Do not edit by hand** — regenerate with `tools/gen_keymap.py`. |
@@ -186,10 +186,11 @@ marks every row dirty, and a TUI repaints whole frames. `update_line` compares
 `(segments, lf)` against `_row_cache` and returns early when unchanged, which is what
 keeps a full-screen repaint from costing hundreds of cross-process calls.
 
-**The follow-scroll gate.** `terminal.viewport_y` records where the last auto-scroll left
-the viewport. If the current viewport is *above* that, the user scrolled up by hand, and
-trimming, caret placement and scrolling are all skipped so their position survives the
-next frame.
+**The follow-scroll gate.** `following()` compares the viewport against
+`terminal.viewport_y`, where the last auto-scroll left it. Above that, the user scrolled
+up by hand, and trimming, caret placement and scrolling are all skipped so their position
+survives the next frame. `scroll_page` (the PgUp/PgDn chord) closes the gate the same way,
+and paging down clamps to the anchor `bottom_y` returns, which re-opens it.
 
 ### How colour is actually drawn
 
@@ -252,6 +253,8 @@ normal mode) would leave the typed character sitting in the view.
 ```
 keymap binding (context: setting.vterm_view)
   → VtermKeypressCommand.run(key=…, ctrl=…, alt=…, shift=…)
+  → page_scroll()            PgUp/PgDn with page_scroll_modifier scrolls the view
+                             and stops here; never on the alternate screen
   → Terminal.send_key()      adds application_mode (DECCKM), new_line_mode (LNM)
   → keys.get_key_code()      modified nav keys → CSI 1;<mod><final>
                              ctrl → control byte; alt → ESC prefix
@@ -330,8 +333,10 @@ replaces both together.
 ## Sublime settings
 
 **Plugin settings** (`vterm.sublime-settings`, read through the cached `settings()`
-handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`, `min_columns`,
-`max_columns`, `theme`, `ansi_colors`, `terminal`, `parameters`, `debug`. `terminal` and
+handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`,
+`page_scroll_modifier`, `min_columns`, `max_columns`, `theme`, `ansi_colors`, `terminal`,
+`parameters`, `debug`. `page_scroll_modifier` is the modifier that turns PgUp/PgDn into a
+page scroll of the view instead of a key for the app. `terminal` and
 `parameters` name the external terminal spawned by *vterm: Open Terminal in Project
 Folder* (`%CWD%` in `parameters` becomes the project folder). `honor_erase_scrollback` is off, so ED 3
 blanks the screen without dropping the scrollback: pi and Claude Code repaint by erasing
