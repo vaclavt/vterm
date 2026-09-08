@@ -172,6 +172,14 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             terminal.pending_clear_screen = False
             self.clear_view(edit, terminal, wipe_screen=True)
 
+        if view.size() == 0 and terminal.offset == 0:
+            # one blank scrollback row above a fresh screen: sublime has no
+            # layout above row 0, and the trackpad poller needs upward slack —
+            # without it, trackpad-up is dead until a line retires, which on
+            # the alt screen is never
+            view.insert(edit, 0, "\n")
+            terminal.offset = 1
+
         self.update_lines(edit, terminal)
         self.sync_alt_fold(terminal)
 
@@ -200,25 +208,27 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
     def sync_alt_fold(self, terminal):
         """Hide the scrollback while the app owns the alt screen: fold it away
-        (the view text is its only copy) and drop past-end scrolling so the
-        view has no scroll range. The fold is re-checked every render — the
-        screen's first row is replaced on every region scroll, and an edit at
-        the fold boundary can silently disturb a fold."""
+        (the view text is its only copy). The scroll range stays: the trackpad
+        poller pins the viewport and needs the slack to read the trackpad.
+        The fold is re-checked every render — the screen's first row is
+        replaced on every region scroll, and an edit at the fold boundary can
+        silently disturb a fold."""
         view = self.view
         alt = terminal.screen.alternate_buffer_mode
         if not alt and not terminal.applied_alt_screen:
             return
-        if alt != terminal.applied_alt_screen:
-            terminal.applied_alt_screen = alt
-            view.settings().set("scroll_past_end", not alt)
+        terminal.applied_alt_screen = alt
         end = view.text_point(terminal.offset, 0) - 1 if alt and terminal.offset else 0
         want = [(0, end)] if end > 0 else []
-        if [(r.begin(), r.end()) for r in view.folded_regions()] == want:
+        had = [(r.begin(), r.end()) for r in view.folded_regions()]
+        if had == want:
             return
         view.unfold(sublime.Region(0, view.size()))
-        if want and view.fold(sublime.Region(0, end)):
-            # a fold collapses the layout; a stale viewport anchor would stop
-            # the follow-scroll gate from re-engaging
+        if want and view.fold(sublime.Region(0, end)) and not had:
+            # a fresh fold collapses the layout; a stale viewport anchor would
+            # stop the follow-scroll gate from re-engaging. re-asserting a
+            # disturbed fold keeps the anchor: apps repaint the boundary row
+            # every scroll, and resetting per repair thrashes the poller
             terminal.viewport_y = 0
 
     def sync_cursor_style(self, terminal):
@@ -535,6 +545,11 @@ def scroll_to_cursor(view, terminal):
     """Follow the output: pin the viewport to the bottom of the live screen."""
     terminal._scroll_pending = False
     y = bottom_y(view, terminal)
+    if y == terminal.viewport_y and terminal._trackpad_running and terminal._trackpad_engaged:
+        # the anchor is unchanged and the trackpad poller owns the pin:
+        # re-pinning here would discard displacement it has not harvested yet,
+        # and apps repaint while scrolling, so this races every gesture
+        return
     terminal.viewport_y = y
     view.set_viewport_position((0, y), False)
 

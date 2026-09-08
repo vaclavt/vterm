@@ -109,6 +109,12 @@ class Terminal:
         self._send_lock = threading.Lock()
         self._wheel_captured = False
         self._scroll_pending = False
+        # trackpad poller (mouse.ensure_trackpad): reschedule guard, fractional
+        # line remainder, harvesting vs. browsing, last seen (anchor, extent)
+        self._trackpad_running = False
+        self._trackpad_acc = 0.0
+        self._trackpad_engaged = True
+        self._trackpad_baseline = None
         self.pending_clear = False
         self.pending_clear_screen = False
         # a forced frame (set on activation); rendering stays on the renderer
@@ -392,6 +398,11 @@ class Terminal:
         if captured != self._wheel_captured:
             self._wheel_captured = captured
             self.view.settings().set("vterm_view.wheel_captured", captured)
+        if captured and not self._trackpad_running:
+            # checked every renderer tick, so a poller that just stopped on a
+            # capture flap is restarted within a frame or two
+            from .mouse import ensure_trackpad  # module-level import would cycle
+            ensure_trackpad(self)
 
     def send_focus(self, focused):
         """Report focus gain or loss, when the app asked for it (?1004)."""

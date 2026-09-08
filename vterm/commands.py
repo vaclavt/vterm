@@ -152,8 +152,8 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
 
     def page_scrolled(self, terminal, key=None, **mods):
         """Page the view one screen over the scrollback, before vterm_show_cursor,
-        whose scroll would pull the viewport straight back down. The alt screen is
-        folded and has no scroll range, so an app there keeps the key.
+        whose scroll would pull the viewport straight back down. The alt screen
+        has its scrollback folded away, so an app there keeps the key.
 
         Returns:
             bool: the view consumed the key; False sends it to the app.
