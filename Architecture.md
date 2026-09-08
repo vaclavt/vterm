@@ -338,8 +338,9 @@ handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`,
 `parameters`, `debug`. `page_scroll_modifier` is the modifier that turns PgUp/PgDn into a
 page scroll of the view instead of a key for the app. `terminal` and
 `parameters` name the external terminal spawned by *vterm: Open Terminal in Project
-Folder* (`%CWD%` in `parameters` becomes the project folder). `honor_erase_scrollback` is off, so ED 3
-blanks the screen without dropping the scrollback: pi and Claude Code repaint by erasing
+Folder* (`%CWD%` in `parameters` becomes the project folder). ED 3 never touches the visible screen (as in
+xterm), and `honor_erase_scrollback` is off, so it does not drop the scrollback either:
+pi and Claude Code repaint by erasing
 saved lines, which would take the history with them (`cmd+shift+k` still empties the tab). Changing `theme` fires `SchemeManager.reload`, which rebuilds the
 palette and restyles open terminals in place.
 

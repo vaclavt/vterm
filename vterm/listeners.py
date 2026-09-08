@@ -25,8 +25,10 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
             terminal.focused = True
             terminal.send_focus(True)
             view.run_command("vterm_clear_undo_stack")
-            # catch up on the frames, title and caret skipped while in the background
-            view.run_command("vterm_render")
+            # catch up on the frames, title and caret skipped while in the
+            # background — via the renderer tick: a render here would race the
+            # renderer thread, which owns the emulator
+            terminal.pending_render = True
             view.run_command("vterm_show_cursor", {"scroll": False})
         elif view.settings().get("vterm_view") and not view.settings().get("vterm_view.finished"):
             # the plugin host restarted; this tab's terminal is unreachable

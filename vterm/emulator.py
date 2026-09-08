@@ -44,6 +44,8 @@ BG_AIXTERM = {100 + i: ANSI_COLORS[8 + i] for i in range(8)}
 REPORTABLE_MODES = (mo.DECAWM >> 5, mo.DECTCEM >> 5, 1000, 1002, 1003, 1004, 1006, 1049, 2004, 2026)
 
 # DEC private modes, pre-shifted into pyte's internal representation.
+# 1: DECCKM, application cursor keys (arrows send SS3); pyte has no name for it
+APP_CURSOR_MODE = 1 << 5
 # 2026: synchronized output, the app is mid-frame and we should not draw
 SYNC_MODE = 2026 << 5
 # 1049: alternate screen, a full-screen app owns the viewport
@@ -91,7 +93,7 @@ def quantize_256(r, g, b):
     return 16 + 36 * level(r) + 6 * level(g) + level(b)
 
 
-# linefeed marks a hard wrap, so copy can re-join soft-wrapped lines
+# linefeed marks an autowrap (soft wrap), so copy can re-join the halves
 Char = namedtuple(
     "Char",
     ["data", "fg", "bg", "bold", "italics", "underscore", "strikethrough", "reverse", "linefeed"],
@@ -227,6 +229,10 @@ class VtScreen(pyte.Screen):
                         line.pop(x, None)
 
         self.lines, self.columns = lines, columns
+        # pyte clamps via restore_cursor; without it a shrink leaves the cursor
+        # negative or past the new edge. x == columns keeps a pending wrap
+        self.cursor.x = min(self.cursor.x, columns)
+        self.cursor.y = min(max(self.cursor.y, 0), lines - 1)
         self.set_margins()
         self.tabstops = set(range(8, self.columns, 8))
 
@@ -364,21 +370,14 @@ class VtScreen(pyte.Screen):
                 elif char_width > 0:
                     cursor.x -= char_width
 
-            if char_width == 1:
+            if char_width == 1 or char_width == 2:
                 if insert_mode:
                     self.insert_characters(char_width)
                 cell = cache.get(char)
                 if cell is None:
                     cell = cache[char] = cursor.attrs._replace(data=char)
                 line[cursor.x] = cell
-            elif char_width == 2:
-                if insert_mode:
-                    self.insert_characters(char_width)
-                cell = cache.get(char)
-                if cell is None:
-                    cell = cache[char] = cursor.attrs._replace(data=char)
-                line[cursor.x] = cell
-                if cursor.x + 1 < columns:
+                if char_width == 2 and cursor.x + 1 < columns:
                     filler = cache.get("")
                     if filler is None:
                         filler = cache[""] = cursor.attrs._replace(data="")
@@ -430,11 +429,18 @@ class VtScreen(pyte.Screen):
         if not self.alternate_buffer_mode and (how == 2 or (how == 0 and self.cursor.x == 0 and self.cursor.y == 0)):
             self.push_lines_into_history()
 
+        if how == 3:
+            # xterm's ED 3 erases the scrollback only; the screen stays
+            if self._erase_scrollback:
+                self.history.clear()
+                self._clear_callback()
+            return
+
         if how == 0:
             interval = range(self.cursor.y + 1, self.lines)
         elif how == 1:
             interval = range(self.cursor.y)
-        elif how == 2 or how == 3:
+        elif how == 2:
             interval = range(self.lines)
         else:
             return
@@ -450,10 +456,6 @@ class VtScreen(pyte.Screen):
 
         if how == 0 or how == 1:
             self.erase_in_line(how)
-
-        if how == 3 and self._erase_scrollback:
-            self.history.clear()
-            self._clear_callback()
 
     def select_graphic_rendition(self, *attrs, **kwargs):
         """Apply an SGR sequence to the cursor attributes.
@@ -490,9 +492,9 @@ class VtScreen(pyte.Screen):
                 if attr[1:] != "blink":
                     replace[attr[1:]] = attr.startswith("+")
             elif attr in FG_AIXTERM:
-                replace.update(fg=FG_AIXTERM[attr])
+                replace["fg"] = FG_AIXTERM[attr]
             elif attr in BG_AIXTERM:
-                replace.update(bg=BG_AIXTERM[attr])
+                replace["bg"] = BG_AIXTERM[attr]
             elif attr in (g.FG_256, g.BG_256):
                 key = "fg" if attr == g.FG_256 else "bg"
                 try:
@@ -592,7 +594,11 @@ class VtScreen(pyte.Screen):
             self.write_process_input("\x1b[{}{};{}R".format(marker, y, x))
         elif mode == 996 and private:
             # color-scheme report, pi asks with a 2s timeout
-            self.write_process_input("\x1b[?997;{}n".format(1 if self.theme_is_dark else 2))
+            self.write_process_input(self.theme_report())
+
+    def theme_report(self):
+        """DSR 997 report: the palette is dark (1) or light (2). Also sent on a live theme change."""
+        return "\x1b[?997;{}n".format(1 if self.theme_is_dark else 2)
 
     def report_xtversion(self):
         """XTVERSION: naming ourselves is what unlocks ?2026 for apps on a generic TERM."""

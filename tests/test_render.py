@@ -595,10 +595,21 @@ line[2] = Char("x", "blue", "default")
 runs = [r for r in segment_buffer_line(line) if r[1] != r[2]]
 assert runs == [("漢", 0, 1, "red", "default", ""), ("x", 1, 2, "blue", "default", "")], runs
 
+# an orphaned wide-char filler (its wide half was overwritten with a narrow
+# char) still occupies a column: rendered as a space so later spans stay aligned
+line = StaticDefaultDict(Char(" "))
+line[0] = Char("a", "default", "default")
+line[1] = Char("", "red", "default")
+line[2] = Char("x", "blue", "default")
+runs = [r for r in segment_buffer_line(line) if r[1] != r[2]]
+assert runs == [("a", 0, 1, "default", "default", ""),
+                (" ", 1, 2, "red", "default", ""),
+                ("x", 2, 3, "blue", "default", "")], runs
+
 # reverse video swaps the pair, and default becomes reverse_default
 line = StaticDefaultDict(Char(" "))
 line[0] = Char("r", "red", "default", False, False, False, False, True)
 runs = [r for r in segment_buffer_line(line) if r[1] != r[2]]
 assert runs == [("r", 0, 1, "reverse_default", "red", "")], runs
 
-print("segmenter tests passed (leading gap, wide char, reverse)")
+print("segmenter tests passed (leading gap, wide char, orphan filler, reverse)")

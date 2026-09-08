@@ -203,6 +203,24 @@ def run_resize_cases():
     feed(stream, "\x1b[?1049l", False)
     assert max(screen.buffer[0]) < 8, sorted(screen.buffer[0])
 
+    # a shrink clamps the cursor (pyte does it via restore_cursor); without
+    # the clamp draw() writes to rows above or below the screen
+    proc, screen, stream = make(10, 8)
+    feed(stream, "\r\n".join("line{}".format(i) for i in range(8)), False)
+    feed(stream, "\x1b[1;1H", False)  # full screen, cursor at home
+    screen.resize(4, 10)
+    assert screen.cursor.y == 0, screen.cursor.y
+
+    proc, screen, stream = make(10, 8)
+    feed(stream, "top\x1b[7;1H", False)  # cursor on a blank row below content
+    screen.resize(4, 10)
+    assert screen.cursor.y == 3, screen.cursor.y
+
+    proc, screen, stream = make(20, 4)
+    feed(stream, "x" * 15, False)
+    screen.resize(4, 10)
+    assert screen.cursor.x == 10, screen.cursor.x
+
     # mode 2031 is how a live theme change reaches the app
     proc, screen, stream = make()
     assert not screen.theme_notify_enabled()
@@ -381,8 +399,7 @@ def run_clear_cases():
     assert len(screen.history) > 0, "history suppressed for too long"
 
     # ED 3 is app-driven: it clears scrollback and fires the clear callback,
-    # and (as in pyte/Terminus) also blanks the screen. Both agents pair it
-    # with 2J and repaint, so the render side must not wipe or nudge again.
+    # but (as in xterm, unlike pyte) leaves the visible screen alone
     cleared = []
     proc = FakeProcess()
     screen = VtScreen(10, 4, process=proc, clear_callback=lambda: cleared.append(1))
@@ -391,9 +408,10 @@ def run_clear_cases():
     assert len(screen.history) > 0
     feed(stream, "\x1b[3J", False)
     assert len(screen.history) == 0 and cleared, (len(screen.history), cleared)
+    assert screen.buffer[0][0].data == "a", screen.buffer[0][0]
 
-    # with erase_scrollback off, ED 3 still blanks the screen but the history
-    # and the view survive: agents repaint with it and would take both
+    # with erase_scrollback off, ED 3 is a no-op: agents repaint with it and
+    # would take the history and the view with them
     cleared = []
     proc = FakeProcess()
     screen = VtScreen(10, 4, process=proc, erase_scrollback=False,
@@ -405,7 +423,7 @@ def run_clear_cases():
     del cleared[:]  # the screen's own reset() fired one at construction
     feed(stream, "\x1b[3J", False)
     assert len(screen.history) == kept and not cleared, (len(screen.history), cleared)
-    assert screen.buffer[0][0].data == " ", screen.buffer[0][0]
+    assert screen.buffer[0][0].data == "a", screen.buffer[0][0]
 
     print("all clear-screen tests passed")
 

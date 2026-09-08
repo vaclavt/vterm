@@ -81,7 +81,7 @@ for entry in load_sublime_json("vterm.sublime-commands") + keymap:
 # every pending_* name mentioned in the modules must be a real Terminal
 # attribute, so a renamed flag cannot leave a writer pointing at nothing
 flags = {f for f in vars(Terminal(None)) if f.startswith("pending_")}
-assert flags == {"pending_clear", "pending_clear_screen"}, flags
+assert flags == {"pending_clear", "pending_clear_screen", "pending_render"}, flags
 for module in (commands, render, terminal_module):
     with open(module.__file__, encoding="utf-8") as f:
         # (?<!_) skips the private _pending_to_send_string write-queue flag

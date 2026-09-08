@@ -39,7 +39,7 @@ class VtermMouseEventListener(sublime_plugin.EventListener):
         if not terminal.screen.mouse_reporting_enabled():
             # leave selection, caret and scrolling to sublime
             return
-        if name == "drag_select" and args and "event" in args and args.get("event", {}).get("button") == 1 and len(args) == 1:
+        if name == "drag_select" and args and args.get("event", {}).get("button") == 1 and len(args) == 1:
             return ("vterm_mouse_click", {"event": args["event"]})
 
 

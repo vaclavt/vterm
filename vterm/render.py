@@ -49,6 +49,11 @@ STYLE_FLAGS = (("bold", "b"), ("italics", "i"), ("underscore", "u"))
 ATTRS = slice(1, 8)
 
 
+def is_default_run(fg, bg, style):
+    """True for a run that needs no colour overlay."""
+    return fg == "default" and bg == "default" and not style
+
+
 def segment_buffer_line(buffer_line):
     """Yield (text, start, end, fg, bg, style) runs of a screen row.
 
@@ -82,7 +87,9 @@ def segment_buffer_line(buffer_line):
             start = column
             attrs = char[ATTRS]
 
-        run.append(char.data)
+        # an orphaned wide-char filler (its first half was overwritten) still
+        # occupies a column; render a space so later spans stay aligned
+        run.append(char.data or " ")
         column += 1
 
     if attrs is not None:
@@ -283,8 +290,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
             for line in range(popped):
                 buffer_line = history.pop()
-                lf = buffer_line[columns - 1].linefeed
-                self.update_line(edit, offset - line - 1, buffer_line, lf)
+                self.update_line(edit, offset - line - 1, buffer_line, columns)
 
             # after the loop: a pop edits an earlier point than the one before
             # it, so spans measured mid-loop would be stale
@@ -292,17 +298,18 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
             for line in dirty_lines:
                 buffer_line = screen.buffer[line]
-                lf = buffer_line[columns - 1].linefeed
-                self.update_line(edit, line + offset, buffer_line, lf)
+                self.update_line(edit, line + offset, buffer_line, columns)
 
-    def update_line(self, edit, line, buffer_line, lf):
+    def update_line(self, edit, line, buffer_line, columns):
         """Rewrite one view row from a screen row, unless it is unchanged.
 
         Args:
             line: absolute view row.
-            lf: the row ended in a real newline, not a soft wrap.
+            columns: screen width; the last cell's linefeed flag marks a soft
+                wrap, which gets the CONTINUATION sentinel.
         """
         view = self.view
+        lf = buffer_line[columns - 1].linefeed
         segments = list(segment_buffer_line(buffer_line))
         # pyte's dirty set is a repaint hint, not a diff: most dirty rows come
         # back identical, and rewriting one costs an edit plus its region churn
@@ -314,7 +321,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         by_scope = {}
         needed = 0
         for _, start, end, fg, bg, style in segments:
-            if fg == "default" and bg == "default" and not style:
+            if is_default_run(fg, bg, style):
                 continue
             needed = max(needed, end)
             by_scope.setdefault(scheme_manager.scope(fg, bg, style), []).append((start, end))
@@ -392,7 +399,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             segments = self._row_cache[row][0]
             start = view.line(view.text_point(row, 0)).begin()
             for _, a, b, fg, bg, style in segments:
-                if fg == "default" and bg == "default" and not style:
+                if is_default_run(fg, bg, style):
                     continue
                 scope = scheme_manager.scope(fg, bg, style)
                 grouped.setdefault(scope, []).append(sublime.Region(start + a, start + b))

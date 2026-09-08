@@ -9,8 +9,9 @@ from queue import Empty, Queue
 
 import sublime
 from ptyprocess import PtyProcess
+from pyte import modes as mo
 
-from .emulator import VtScreen, VtStream
+from .emulator import APP_CURSOR_MODE, VtScreen, VtStream
 from .keys import get_key_code
 from .scheme import scheme_manager
 from .utils import intermission, responsive, settings
@@ -93,7 +94,7 @@ class Terminal:
         self.default_title = ""
         self.offset = 0
         self.viewport_y = 0
-        self.scrollback_size = 5000
+        self.scrollback_size = 50000
         self._hosted = True
         self._hosted_checked = 0
         self.focused = True
@@ -104,10 +105,15 @@ class Terminal:
         self.applied_alt_screen = False
         self._strings = Queue()
         self._pending_to_send_string = False
+        # guards the queue/flag handoff between send_string and the drain thread
+        self._send_lock = threading.Lock()
         self._wheel_captured = False
         self._scroll_pending = False
         self.pending_clear = False
         self.pending_clear_screen = False
+        # a forced frame (set on activation); rendering stays on the renderer
+        # thread, which owns the emulator
+        self.pending_render = False
         # a UTF-8 sequence split across read chunks must not be dropped
         self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
@@ -192,7 +198,7 @@ class Terminal:
         screen.default_bg_color = scheme_manager.background.lstrip("#")
         screen.theme_is_dark = scheme_manager.is_dark()
         if screen.theme_notify_enabled():
-            self.send_string("\x1b[?997;{}n".format(1 if screen.theme_is_dark else 2), normalized=False)
+            self.send_string(screen.theme_report(), normalized=False)
 
     def kill(self):
         """Terminate the child and drop this terminal from the registry."""
@@ -218,8 +224,9 @@ class Terminal:
     def _need_to_render(self):
         """Whether anything changed since the last frame: dirty rows, a clear, or the cursor."""
         screen = self.screen
-        if self.pending_clear or self.pending_clear_screen:
-            # a pending clear must render even when the app is idle
+        if self.pending_render or self.pending_clear or self.pending_clear_screen:
+            # a pending clear or forced frame must render even when the app is idle
+            self.pending_render = False
             return True
         cursor = (screen.cursor.x, screen.cursor.y, screen.cursor_hidden(), screen.cursor_style)
         if screen.dirty or cursor != self._cached_cursor:
@@ -329,8 +336,8 @@ class Terminal:
 
     def send_key(self, **kwargs):
         """Encode a key name plus modifiers for the app's current modes and send it."""
-        kwargs["application_mode"] = (1 << 5) in self.screen.mode
-        kwargs["new_line_mode"] = 20 in self.screen.mode
+        kwargs["application_mode"] = APP_CURSOR_MODE in self.screen.mode
+        kwargs["new_line_mode"] = mo.LNM in self.screen.mode
         self.send_string(get_key_code(**kwargs), normalized=False)
 
     def send_string(self, string, normalized=True):
@@ -342,22 +349,24 @@ class Terminal:
         """
         if normalized:
             string = string.replace("\r\n", "\n")
-            if 20 in self.screen.mode:
+            if mo.LNM in self.screen.mode:
                 string = string.replace("\n", "\r\n")
             else:
                 string = string.replace("\n", "\r")
 
         # chunked so a big paste cannot overrun the pty buffer; the blocking
         # pty write is the backpressure, no pacing sleep needed
-        no_queue = not self._pending_to_send_string
-        if no_queue and len(string) <= 4096:
-            self.process.write(string)
-        else:
-            for i in range(0, len(string), 4096):
-                self._strings.put(string[i : i + 4096])
-            if no_queue:
-                self._pending_to_send_string = True
-                threading.Thread(target=self._process_send_string, daemon=True).start()
+        with self._send_lock:
+            no_queue = not self._pending_to_send_string
+            if not (no_queue and len(string) <= 4096):
+                for i in range(0, len(string), 4096):
+                    self._strings.put(string[i : i + 4096])
+                if no_queue:
+                    self._pending_to_send_string = True
+                    threading.Thread(target=self._process_send_string, daemon=True).start()
+                return
+        # outside the lock: the pty write can block on backpressure
+        self.process.write(string)
 
     def _process_send_string(self):
         """Drain the queued paste chunks; the blocking pty write paces them."""
@@ -365,10 +374,15 @@ class Terminal:
             try:
                 # linger so a burst of sends does not respawn the thread
                 string = self._strings.get(timeout=0.2)
-                self.process.write(string)
             except Empty:
-                self._pending_to_send_string = False
-                return
+                # under the lock: a chunk enqueued after the timeout but before
+                # the flag drops would otherwise strand until the next send
+                with self._send_lock:
+                    if self._strings.empty():
+                        self._pending_to_send_string = False
+                        return
+                continue
+            self.process.write(string)
 
     def _sync_wheel_flag(self):
         """Publish whether the app owns the wheel, for the mousemap context."""
