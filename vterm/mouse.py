@@ -13,9 +13,9 @@ WHEEL_DOWN = 65
 # line per report and has no setting of its own
 WHEEL_LINES = 3
 
-# trackpad poll period: one frame at 60 Hz, so a snapped-back displacement
-# never exceeds a frame's worth of motion
-TRACKPAD_POLL_MS = 16
+# trackpad poll period: the snapped-back displacement grows with it, and the
+# alt-screen up-scroll rate is capped at one line per tick (16 = one 60 Hz frame)
+TRACKPAD_POLL_MS = 24
 
 
 def send_scroll(terminal, up, lines, cell=None):
@@ -132,8 +132,7 @@ def start_trackpad(terminal):
 def _trackpad_tick(terminal):
     """One poll: harvest viewport displacement, reschedule while captured."""
     view = terminal.view
-    if Terminal.from_id(view.id()) is not terminal or not terminal.alive \
-            or not terminal._wheel_captured or not terminal.is_visible():
+    if Terminal.from_id(view.id()) is not terminal or not terminal.alive or not terminal._wheel_captured or not terminal.is_visible():
         terminal._trackpad_running = False
         return
     anchor = terminal.viewport_y
