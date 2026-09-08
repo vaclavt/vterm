@@ -172,7 +172,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             terminal.pending_clear_screen = False
             self.clear_view(edit, terminal, wipe_screen=True)
 
-        if view.size() == 0 and terminal.offset == 0:
+        if terminal.offset == 0 and view.size() == 0:
             # one blank scrollback row above a fresh screen: sublime has no
             # layout above row 0, and the trackpad poller needs upward slack —
             # without it, trackpad-up is dead until a line retires, which on
@@ -217,15 +217,15 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         alt = terminal.screen.alternate_buffer_mode
         if not alt and not terminal.applied_alt_screen:
             return
+        entering = alt and not terminal.applied_alt_screen
         terminal.applied_alt_screen = alt
         end = view.text_point(terminal.offset, 0) - 1 if alt and terminal.offset else 0
         want = [(0, end)] if end > 0 else []
-        had = [(r.begin(), r.end()) for r in view.folded_regions()]
-        if had == want:
+        if [(r.begin(), r.end()) for r in view.folded_regions()] == want:
             return
         view.unfold(sublime.Region(0, view.size()))
-        if want and view.fold(sublime.Region(0, end)) and not had:
-            # a fresh fold collapses the layout; a stale viewport anchor would
+        if want and view.fold(sublime.Region(0, end)) and entering:
+            # entering collapses the layout; a stale viewport anchor would
             # stop the follow-scroll gate from re-engaging. re-asserting a
             # disturbed fold keeps the anchor: apps repaint the boundary row
             # every scroll, and resetting per repair thrashes the poller
@@ -545,7 +545,7 @@ def scroll_to_cursor(view, terminal):
     """Follow the output: pin the viewport to the bottom of the live screen."""
     terminal._scroll_pending = False
     y = bottom_y(view, terminal)
-    if y == terminal.viewport_y and terminal._trackpad_running and terminal._trackpad_engaged:
+    if y == terminal.viewport_y and terminal.trackpad_pinning():
         # the anchor is unchanged and the trackpad poller owns the pin:
         # re-pinning here would discard displacement it has not harvested yet,
         # and apps repaint while scrolling, so this races every gesture

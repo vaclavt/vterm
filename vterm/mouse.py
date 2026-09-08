@@ -1,6 +1,4 @@
 """ SGR mouse reporting while the app tracks the mouse; otherwise sublime keeps drag_select """
-import math
-
 import sublime
 import sublime_plugin
 
@@ -115,18 +113,17 @@ class VtermScrollCommand(sublime_plugin.TextCommand):
         return True
 
 
-def ensure_trackpad(terminal):
+def start_trackpad(terminal):
     """Start the poller that turns trackpad scrolling into wheel lines.
 
     The trackpad never fires the mousemap scroll bindings on macOS
     (sublime_text#1838); its only trace is viewport movement. While the app
     owns the wheel the mousemap keeps the physical wheel off the viewport, so
     any displacement from the follow anchor is trackpad scroll: harvest whole
-    lines from it, send them like wheel lines, and snap the viewport back."""
-    if terminal._trackpad_running:
-        return
+    lines from it, send them like wheel lines, and snap the viewport back.
+
+    The caller checks _trackpad_running; the first tick arms the baseline."""
     terminal._trackpad_running = True
-    terminal._trackpad_acc = 0.0
     terminal._trackpad_engaged = True
     terminal._trackpad_baseline = None
     sublime.set_timeout(lambda: _trackpad_tick(terminal), TRACKPAD_POLL_MS)
@@ -136,7 +133,7 @@ def _trackpad_tick(terminal):
     """One poll: harvest viewport displacement, reschedule while captured."""
     view = terminal.view
     if Terminal.from_id(view.id()) is not terminal or not terminal.alive \
-            or not terminal._wheel_captured:
+            or not terminal._wheel_captured or not terminal.is_visible():
         terminal._trackpad_running = False
         return
     anchor = terminal.viewport_y
@@ -146,13 +143,13 @@ def _trackpad_tick(terminal):
         # around the new position instead of reading the move as a gesture
         terminal._trackpad_baseline = (anchor, extent)
         terminal._trackpad_acc = 0.0
+    elif not terminal._trackpad_engaged:
+        if following(view, terminal):
+            terminal._trackpad_engaged = True
+            terminal._trackpad_acc = 0.0
     else:
         dy = view.viewport_position()[1] - anchor
-        if not terminal._trackpad_engaged:
-            if following(view, terminal):
-                terminal._trackpad_engaged = True
-                terminal._trackpad_acc = 0.0
-        elif dy == 0:
+        if dy == 0:
             # at rest a stale fraction must not fire on the next gesture
             terminal._trackpad_acc = 0.0
         elif abs(dy) >= extent:
@@ -161,7 +158,7 @@ def _trackpad_tick(terminal):
             terminal._trackpad_engaged = False
         else:
             terminal._trackpad_acc += dy / view.line_height()
-            lines = math.trunc(terminal._trackpad_acc)
+            lines = int(terminal._trackpad_acc)
             terminal._trackpad_acc -= lines
             if lines:
                 send_scroll(terminal, up=lines < 0, lines=abs(lines))
