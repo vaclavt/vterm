@@ -587,8 +587,6 @@ terminal.viewport_y = 400
 command = make_command(terminal.view)
 fold_end = terminal.view.text_point(3, 0) - 1
 
-terminal.view.settings().set("scroll_past_end", True)
-
 stream.feed("\x1b[?1049h")
 command.sync_alt_fold(terminal)
 assert terminal.view.folds == [(0, fold_end)], terminal.view.folds
@@ -610,7 +608,6 @@ assert terminal.viewport_y == 60, terminal.viewport_y
 stream.feed("\x1b[?1049l")
 command.sync_alt_fold(terminal)
 assert terminal.view.folds == [], terminal.view.folds
-assert terminal.view.settings().get("scroll_past_end") is True, "left untouched"
 
 # without scrollback there is nothing to fold
 terminal, stream = make_terminal(rows=5, cols=20)

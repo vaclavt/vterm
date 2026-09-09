@@ -280,7 +280,6 @@ class Terminal:
 
         def renderer():
             """Own the emulator: parse, then ask sublime to redraw, once per tick."""
-            settled_y = None
             while True:
                 # a hidden tab is not drawn at all: the screen keeps the state
                 # and one render on unhide catches the view up. The tick stays at
@@ -298,21 +297,6 @@ class Terminal:
                         # due first: _need_to_render consumes the cursor move it reports
                         if self.is_render_due() and self._need_to_render():
                             self.view.run_command("vterm_render")
-                            # a frame can move the viewport: a sample from
-                            # before it says nothing about coming to rest
-                            settled_y = None
-                        else:
-                            # the wheel can drag the screen off the top into
-                            # sublime's past-end room; a frame undoes that, and
-                            # an idle terminal draws none. Pinning while the
-                            # view is still gliding fights the scroll's
-                            # momentum, which reads as shaking, so wait for two
-                            # ticks to agree that it has come to rest
-                            y = self.view.viewport_position()[1]
-                            if y == settled_y and self.viewport_y < y:
-                                from .render import request_scroll  # module-level import would cycle
-                                request_scroll(self.view, self)
-                            settled_y = y
                     self._sync_wheel_flag()
                     if done[0] or not self.is_hosted():
                         LOG.debug("[renderer] stops")

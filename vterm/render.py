@@ -218,8 +218,9 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         if want and view.fold(sublime.Region(0, end)) and entering:
             # entering collapses the layout; a stale viewport anchor would
             # stop the follow-scroll gate from re-engaging. re-asserting a
-            # disturbed fold keeps the anchor: apps repaint the boundary row
-            # every scroll, and resetting per repair thrashes the poller
+            # disturbed fold keeps the anchor instead: apps repaint the
+            # boundary row on every scroll, and resetting per repair would
+            # drop the user's place each time
             terminal.viewport_y = 0
 
     def sync_cursor_style(self, terminal):

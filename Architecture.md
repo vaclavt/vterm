@@ -196,11 +196,6 @@ the same way, and scrolling down clamps to the anchor `bottom_y` returns, which 
 it. A one-row scroll lands exactly on the tolerance boundary, so one Up closes the gate
 and one Down re-opens it.
 
-**Pinning waits for rest.** The renderer pins a viewport dragged into sublime's past-end
-room on a terminal too idle to draw a frame, but only once two ticks agree it has come to
-rest: macOS keeps scrolling after the fingers lift, and a hard `set_viewport_position`
-against that momentum yanks the view back for as long as the glide lasts.
-
 ### How colour is actually drawn
 
 `view.add_regions(key, regions, scope)` can only name a **scope**. It cannot take a
@@ -367,9 +362,10 @@ palette and restyles open terminals in place.
 
 **Stamped on every terminal view** by `vterm_initialize_view`: `vterm_view` (the marker
 every context and hook keys off), `is_widget`, `color_scheme` (the generated scheme),
-`syntax` (the empty one), `scroll_past_end`, `scroll_context_lines`, and a list of
-disables — `gutter`, `highlight_line`, `word_wrap`, `auto_complete`, `draw_white_space`,
-`draw_indent_guides`, `spell_check`, `translate_tabs_to_spaces`, `command_mode` (which
+`syntax` (the empty one), `scroll_past_end` (off — the view never scrolls below the last
+line), `scroll_context_lines`, and a list of disables — `gutter`, `highlight_line`,
+`word_wrap`, `auto_complete`, `draw_white_space`, `draw_indent_guides`, `spell_check`,
+`translate_tabs_to_spaces`, `command_mode` (which
 defuses Vintage mode inside a terminal). The view is also set scratch, so closing it never
 prompts to save.
 
