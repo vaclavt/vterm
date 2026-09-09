@@ -109,14 +109,6 @@ class Terminal:
         self._send_lock = threading.Lock()
         self._wheel_captured = False
         self._scroll_pending = False
-        # trackpad poller (mouse.start_trackpad): reschedule guard, fractional
-        # line remainder, harvesting vs. browsing, last seen (anchor, extent),
-        # viewport of the previous browsing tick
-        self._trackpad_running = False
-        self._trackpad_acc = 0.0
-        self._trackpad_engaged = True
-        self._trackpad_baseline = None
-        self._trackpad_browse_y = None
         self.pending_clear = False
         self.pending_clear_screen = False
         # a forced frame (set on activation); rendering stays on the renderer
@@ -153,10 +145,6 @@ class Terminal:
             group = window.get_view_index(self.view)[0] if window else -1
             self._visible = group >= 0 and window.active_view_in_group(group) == self.view
         return self._visible
-
-    def trackpad_pinning(self):
-        """Whether the trackpad poller owns pinning the viewport to the anchor."""
-        return self._trackpad_running and self._trackpad_engaged
 
     def is_render_due(self):
         """Whether an unfocused terminal may draw again.
@@ -317,7 +305,7 @@ class Terminal:
                             # the wheel can drag the screen off the top into
                             # sublime's past-end room; a frame undoes that, and
                             # an idle terminal draws none. Pinning while the
-                            # view is still gliding fights the trackpad's
+                            # view is still gliding fights the scroll's
                             # momentum, which reads as shaking, so wait for two
                             # ticks to agree that it has come to rest
                             y = self.view.viewport_position()[1]
@@ -421,11 +409,6 @@ class Terminal:
         if captured != self._wheel_captured:
             self._wheel_captured = captured
             self.view.settings().set("vterm_view.wheel_captured", captured)
-        if captured and not self._trackpad_running and self.is_visible():
-            # checked every renderer tick, so a poller that stopped on a
-            # capture flap or a hidden tab restarts within a frame or two
-            from .mouse import start_trackpad  # module-level import would cycle
-            start_trackpad(self)
 
     def send_focus(self, focused):
         """Report focus gain or loss, when the app asked for it (?1004)."""

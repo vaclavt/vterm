@@ -34,7 +34,7 @@ Constraints it works under:
 | `vterm/themes.py` | The built-in palettes (`default`, `homebrew`, `pro`, `slate`). |
 | `vterm/commands.py` | The Sublime commands: open, keypress, copy/paste, theme picker, clear, cleanup, close. |
 | `vterm/listeners.py` | `VtermCoreEventListener`: focus, IME capture, copy/paste rerouting, the mousemap context. |
-| `vterm/mouse.py` | Wheel and click handling, and the trackpad poller. |
+| `vterm/mouse.py` | Wheel and click handling. |
 | `vterm/keys.py` | Key name + modifiers → escape sequence tables. |
 | `vterm/utils.py` | `settings()`, the `responsive` throttle, the `intermission` pacer, `rev_wcwidth`. |
 
@@ -133,8 +133,7 @@ child writes
    │   _need_to_render()?          dirty rows, a pending clear, or a
    │                               moved cursor
    │   view.run_command("vterm_render")
-   │   _sync_wheel_flag()          publishes the mousemap gate, and starts the
-   │                               trackpad poller while the app owns the wheel
+   │   _sync_wheel_flag()          publishes the mousemap gate
    │
    └─ UI thread ──────────────────────────────────────────────────
        VtermRenderCommand.run(edit)
@@ -183,9 +182,6 @@ view row of screen row 0. When the emulator retires lines into `screen.history`,
 renderer drains them, advances `offset` by that many rows, and writes them at their now
 permanent view rows. **Once a line leaves `screen.history`, its only copy is the view
 text** — which is why the alternate screen *folds* the scrollback rather than deleting it.
-A fresh view is given one blank scrollback row before anything else: Sublime lays out
-nothing above row 0, and the trackpad poller needs that slack to see an upward gesture at
-all — on the alt screen no line ever retires to provide it.
 
 **The row cache.** pyte's `dirty` set is a repaint *hint*, not a diff: scrolling one line
 marks every row dirty, and a TUI repaints whole frames. `update_line` compares
@@ -200,13 +196,10 @@ the same way, and scrolling down clamps to the anchor `bottom_y` returns, which 
 it. A one-row scroll lands exactly on the tolerance boundary, so one Up closes the gate
 and one Down re-opens it.
 
-**Pinning waits for rest.** Two pollers put the viewport back on the anchor: the renderer
-tick, for a viewport dragged into sublime's past-end room on a terminal too idle to draw
-a frame, and the trackpad poller, when a browsing gesture returns to the anchor. Both
-compare the viewport against the position they saw one tick earlier and act only when the
-two agree. macOS keeps scrolling after the fingers lift, and a hard
-`set_viewport_position` against that momentum used to yank the view back thirty times a
-second for as long as the glide lasted — a visible shake at the bottom of every scroll.
+**Pinning waits for rest.** The renderer pins a viewport dragged into sublime's past-end
+room on a terminal too idle to draw a frame, but only once two ticks agree it has come to
+rest: macOS keeps scrolling after the fingers lift, and a hard `set_viewport_position`
+against that momentum yanks the view back for as long as the glide lasts.
 
 ### How colour is actually drawn
 
@@ -253,14 +246,12 @@ Details worth knowing before touching `scheme.py`:
 ### The alternate screen
 
 While an app owns the alternate buffer, `sync_alt_fold` folds rows `0..offset-1` away, so
-the view shows the app's screen alone. The scroll range is deliberately left in place: the
-trackpad poller pins the viewport and needs the slack to read a gesture. The fold is
-re-checked every frame, not just on transitions, because the screen's first row is
-rewritten on every region scroll and an edit at the fold boundary can silently break a
-fold. Entering the alt screen collapses the layout, so that transition also zeroes
-`terminal.viewport_y`; a stale anchor would hold the follow-scroll gate shut. A fold
-merely repaired keeps the anchor, or the boundary row apps rewrite on every scroll would
-thrash the poller. The emulator side
+the view shows the app's screen alone. The fold is re-checked every frame, not just on
+transitions, because the screen's first row is rewritten on every region scroll and an
+edit at the fold boundary can silently break a fold. Entering the alt screen collapses the
+layout, so that transition also zeroes `terminal.viewport_y`; a stale anchor would hold
+the follow-scroll gate shut. A fold merely repaired keeps the anchor, or the boundary row
+apps rewrite on every scroll would reset it every frame. The emulator side
 (`switch_to_screen`) swaps in a `maxlen=0` history, so a full-screen app never pushes its
 frames into scrollback.
 
@@ -314,15 +305,12 @@ which produces three cases:
    real scrollback text.
 
 **The trackpad** fires none of that: on macOS it never reaches a mousemap binding
-(sublime_text#1838), and its only trace is the viewport moving. So while the wheel flag is
-up, `start_trackpad` runs a 24 ms timer chain, and any displacement from the follow anchor
-is a gesture — whole lines of it go out through the same `send_scroll` as the wheel, the
-fraction is carried into the next tick, and the viewport is pinned back to the anchor. A
-displacement of a viewport or more is a scrollbar drag or a page scroll instead: the poller
-disengages and lets the user browse until they return to the anchor. `_sync_wheel_flag`
-restarts the chain within a frame or two of it stopping on a hidden tab or a capture flap,
-and `scroll_to_cursor` yields while the poller owns the pin — apps repaint mid-gesture, and
-re-pinning there would discard displacement not yet harvested.
+(sublime_text#1838) and dispatches no command, so a plugin cannot see it at all. Its only
+in-API trace is the viewport moving, and reading a gesture that way means letting the view
+move before pinning it back — visibly, at every poll. vterm does not try: the trackpad is
+converted outside the plugin, by a utility such as LinearMouse set to discrete scrolling
+for Sublime Text, and arrives as ordinary wheel notches on the path above. Nothing in the
+plugin is trackpad-aware, and the viewport is never moved to measure input.
 
 Clicks: `VtermMouseEventListener` intercepts `drag_select` only when the app tracks the
 mouse, and only the plain single-button form, so shift-click and add-selection stay
@@ -345,7 +333,7 @@ that normally does that — and subsequent clicks send a press/release pair.
 
 | Thread | Runs | Touches |
 |---|---|---|
-| UI | commands, listeners, `Terminal.start`, `scroll_to_cursor`, `_trackpad_tick`, clipboard | Sublime API; small pty writes go out here too |
+| UI | commands, listeners, `Terminal.start`, `scroll_to_cursor`, clipboard | Sublime API; small pty writes go out here too |
 | reader | `process.read`, decode, `chunks.append` | no Sublime API, no screen state |
 | renderer | `stream.feed`, then `run_command("vterm_render")` | owns the emulator |
 | paste drain | transient; empties the 4096-byte chunk queue | pty only |

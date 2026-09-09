@@ -172,14 +172,6 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             terminal.pending_clear_screen = False
             self.clear_view(edit, terminal, wipe_screen=True)
 
-        if terminal.offset == 0 and view.size() == 0:
-            # one blank scrollback row above a fresh screen: sublime has no
-            # layout above row 0, and the trackpad poller needs upward slack —
-            # without it, trackpad-up is dead until a line retires, which on
-            # the alt screen is never
-            view.insert(edit, 0, "\n")
-            terminal.offset = 1
-
         self.update_lines(edit, terminal)
         self.sync_alt_fold(terminal)
 
@@ -208,8 +200,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
     def sync_alt_fold(self, terminal):
         """Hide the scrollback while the app owns the alt screen: fold it away
-        (the view text is its only copy). The scroll range stays: the trackpad
-        poller pins the viewport and needs the slack to read the trackpad.
+        (the view text is its only copy).
         The fold is re-checked every render — the screen's first row is
         replaced on every region scroll, and an edit at the fold boundary can
         silently disturb a fold."""
@@ -545,11 +536,6 @@ def scroll_to_cursor(view, terminal):
     """Follow the output: pin the viewport to the bottom of the live screen."""
     terminal._scroll_pending = False
     y = bottom_y(view, terminal)
-    if y == terminal.viewport_y and terminal.trackpad_pinning():
-        # the anchor is unchanged and the trackpad poller owns the pin:
-        # re-pinning here would discard displacement it has not harvested yet,
-        # and apps repaint while scrolling, so this races every gesture
-        return
     terminal.viewport_y = y
     view.set_viewport_position((0, y), False)
 

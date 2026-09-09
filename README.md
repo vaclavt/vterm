@@ -52,11 +52,9 @@ wheel scrolls the view normally; while the app tracks the mouse the wheel and
 left click go to it instead, and on the alternate screen without tracking each
 wheel tick sends arrow keys (alternate scroll, as kitty/iTerm2 do — this is
 what scrolls Claude Code's fullscreen UI before it enables mouse reporting).
-Sublime raises no wheel event at all for the trackpad (sublime_text#1838), so
-while the app owns the wheel a poller reads the viewport movement instead,
-sends it as scroll lines and pins the view back. A jump of a whole screen or
-more — the scrollbar, the page keys — is left alone, so the scrollback is still
-yours to browse until you come back to the bottom. While an app owns the
+Sublime raises no wheel event at all for the trackpad (sublime_text#1838): set
+a utility such as [LinearMouse](https://linearmouse.app/) to discrete scrolling
+for Sublime Text and it arrives as wheel notches like any other. While an app owns the
 alternate screen the scrollback above it is folded away, kitty-style, and
 unfolds when the app leaves it.
 
@@ -118,9 +116,9 @@ terminal protocols — see `Architecture.md`.
   leave the character behind. `on_modified` in `vterm/listeners.py` remains the
   fallback for IME and composed input.
 - `vterm/mouse.py` — SGR mouse reporting (wheel, click) when the app enables
-  tracking; native selection and scrolling otherwise. The trackpad reaches no
-  mousemap on macOS, so while the app owns the wheel a 24 ms poller harvests
-  viewport displacement into the same reports.
+  tracking; native selection and scrolling otherwise. The trackpad is not
+  handled: it reaches no mousemap on macOS and is converted to wheel notches
+  outside the plugin.
 
 Supported: alt screen (1049), synchronized output (2026), bracketed paste (2004),
 mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left click are reported; no
@@ -150,8 +148,12 @@ instead), image protocols, Windows, panels.
   input, so close it and open a new one.
 - CJK and emoji rely on wcwidth agreeing with Sublime's font metrics; where they
   disagree the caret can drift.
-- Trackpad scroll into an app is polled and rounded to whole lines, so it is
-  coarser than the wheel in a native terminal.
+- Trackpad scrolling needs a helper on macOS: Sublime never delivers it to a
+  plugin (sublime_text#1838), so set a utility such as
+  [LinearMouse](https://linearmouse.app/) to discrete/linear scrolling for
+  Sublime Text. It then arrives as wheel notches and scrolls the app. Without
+  one, the trackpad does nothing in a full-screen app; the mouse wheel,
+  `shift+pageup/pagedown` and `shift+up/down` work regardless.
 
 ## Dev
 

@@ -421,141 +421,6 @@ assert terminal.process.written == "", repr(terminal.process.written)
 print("alternate scroll tests passed (3 lines per tick: arrows on alt screen, SGR when tracking, inert otherwise)")
 
 
-# the trackpad never fires the mousemap on macOS (#1838): the poller harvests
-# viewport displacement from the follow anchor into wheel lines, snaps back.
-# ticks are stepped one at a time — the poller reschedules itself, so a
-# blanket sublime.run_timeouts() would loop forever
-terminal, stream = make_terminal(rows=5, cols=20)
-Terminal._terminals[id(terminal)] = terminal
-terminal.view.id = lambda: id(terminal)
-terminal.view.text = "\n".join("row {}".format(i) for i in range(8))
-terminal.offset = 3
-ANCHOR = 3 * LINE_HEIGHT
-terminal.viewport_y = ANCHOR
-terminal.view.viewport = (0, ANCHOR)
-stream.feed("\x1b[?1002h\x1b[?1006h")
-
-del sublime._timeouts[:]
-terminal._sync_wheel_flag()
-assert terminal._trackpad_running
-terminal._sync_wheel_flag()
-assert len(sublime._timeouts) == 1, "one timer chain per terminal"
-
-
-def tick():
-    sublime._timeouts.pop(0)()
-
-
-def displace(pixels):
-    terminal.process.written = ""
-    terminal.view.viewport = (0, ANCHOR + pixels)
-    tick()
-    return terminal.process.written
-
-
-# the first tick only arms the baseline; a gesture on it must stay silent
-assert displace(50) == "", repr(terminal.process.written)
-assert terminal.view.viewport == (0, ANCHOR + 50), "arming must not snap"
-
-# 2.5 lines down: two wheel-down reports, snap back, the fraction kept
-assert displace(50) == "\x1b[<65;1;3M" * 2
-assert terminal.view.viewport == (0, ANCHOR), terminal.view.viewport
-assert terminal._trackpad_acc == 0.5, terminal._trackpad_acc
-
-# half a line more completes the kept fraction into one report
-assert displace(10) == "\x1b[<65;1;3M"
-
-# a resting tick clears the remainder, so it cannot fire a gesture later
-assert displace(10) == ""
-assert displace(0) == ""
-assert terminal._trackpad_acc == 0, terminal._trackpad_acc
-
-# upward displacement reports wheel-up
-assert displace(-30) == "\x1b[<64;1;3M"
-
-# a renderer re-anchor (fold reset, follow-scroll) is not a gesture
-displace(0)
-terminal.viewport_y = 0
-terminal.view.viewport = (0, 0)
-tick()
-assert terminal.process.written == "", repr(terminal.process.written)
-terminal.viewport_y = ANCHOR
-terminal.view.viewport = (0, ANCHOR)
-tick()
-
-# a queued follow-scroll must not starve the poller: apps repaint while
-# scrolling (less redraws per line, claude constantly), so this races every
-# gesture and used to read as shaking
-terminal._scroll_pending = True
-assert displace(40) == "\x1b[<65;1;3M" * 2
-terminal._scroll_pending = False
-
-# nor may the follow-scroll itself discard un-harvested displacement while
-# the anchor is unchanged: the poller owns the pin
-terminal.view.viewport = (0, ANCHOR + 30)
-scroll_to_cursor(terminal.view, terminal)
-assert terminal.view.viewport == (0, ANCHOR + 30), terminal.view.viewport
-terminal.process.written = ""
-tick()
-assert terminal.process.written == "\x1b[<65;1;3M", repr(terminal.process.written)
-assert terminal.view.viewport == (0, ANCHOR), terminal.view.viewport
-displace(0)  # drop the half-line remainder
-
-# a real anchor change still pins: that is the follow-scroll's job
-terminal.view.text += "row 8\n"
-scroll_to_cursor(terminal.view, terminal)
-assert terminal.viewport_y == ANCHOR + LINE_HEIGHT, terminal.viewport_y
-assert terminal.view.viewport == (0, ANCHOR + LINE_HEIGHT), terminal.view.viewport
-terminal.view.text = terminal.view.text[:-len("row 8\n")]
-terminal.viewport_y = ANCHOR
-terminal.view.viewport = (0, ANCHOR)
-tick()  # settle back on the restored anchor
-
-# a jump of a viewport or more (scrollbar, page scroll) disengages: the user
-# browses the scrollback natively until they come back to the anchor
-extent = terminal.view.viewport_extent()[1]
-assert displace(-extent) == ""
-assert not terminal._trackpad_engaged
-assert terminal.view.viewport == (0, ANCHOR - extent), "browsing must not snap"
-assert displace(-30) == "", "still browsing"
-terminal.view.viewport = (0, ANCHOR)
-tick()  # back at the anchor, but still gliding: nothing may pin it yet
-assert not terminal._trackpad_engaged
-tick()  # at rest on the anchor: re-engage
-assert terminal._trackpad_engaged
-assert displace(20) == "\x1b[<65;1;3M"
-
-# momentum carrying past the anchor must glide unpinned — pinning it mid-glide
-# is the shake — and be corrected in one step once it stops, without a report
-assert displace(-extent) == ""
-assert not terminal._trackpad_engaged
-terminal.process.written = ""
-terminal.view.viewport = (0, ANCHOR + 40)
-tick()
-assert terminal.view.viewport == (0, ANCHOR + 40), "gliding must not snap"
-assert not terminal._trackpad_engaged
-tick()
-assert terminal._trackpad_engaged
-assert terminal.view.viewport == (0, ANCHOR), terminal.view.viewport
-assert terminal.process.written == "", repr(terminal.process.written)
-
-# on the alt screen without tracking the same displacement turns into arrows
-stream.feed("\x1b[?1002l\x1b[?1006l\x1b[?1049h")
-terminal._sync_wheel_flag()
-assert len(sublime._timeouts) == 1, "capture never lapsed, no second chain"
-tick()  # alt entry left the anchor alone, but spend a tick anyway
-assert displace(-20) == "\x1b[A"
-
-# capture released: the poller stops and unhooks itself
-stream.feed("\x1b[?1049l")
-terminal._sync_wheel_flag()
-tick()
-assert not terminal._trackpad_running
-assert sublime._timeouts == [], sublime._timeouts
-
-print("trackpad tests passed (displacement harvested, fractions kept, jumps browse, momentum settles, poller unhooks)")
-
-
 # with the configured modifier PgUp/PgDn page the view and Up/Down move it one
 # row, instead of reaching the app; every other combination is sent as before.
 # 24 scrollback rows above an 8-row screen, viewport at the follow anchor
@@ -728,16 +593,14 @@ stream.feed("\x1b[?1049h")
 command.sync_alt_fold(terminal)
 assert terminal.view.folds == [(0, fold_end)], terminal.view.folds
 assert terminal.viewport_y == 0, terminal.viewport_y
-assert terminal.view.settings().get("scroll_past_end") is True, \
-    "the scroll range must stay: the trackpad poller reads it"
 
 # a second render leaves the fold alone
 command.sync_alt_fold(terminal)
 assert terminal.view.folds == [(0, fold_end)], terminal.view.folds
 
 # a disturbed fold is re-asserted on the next render, keeping the anchor:
-# apps repaint the boundary row every scroll, and a per-repair reset made the
-# poller read the thrashing anchor as phantom down-lines (dead trackpad-up)
+# apps repaint the boundary row every scroll, and a per-repair reset dropped
+# the user's scrollback position on every frame
 terminal.viewport_y = 60
 terminal.view.folds = [(0, fold_end - 2)]
 command.sync_alt_fold(terminal)
@@ -759,23 +622,6 @@ assert terminal.view.folds == [], terminal.view.folds
 
 print("alt fold tests passed (scrollback folded on entry, restored on exit)")
 
-
-# a fresh view gets one blank scrollback row: sublime has no layout above row
-# 0, so without it the trackpad poller has no upward slack — and on the alt
-# screen no line ever retires to provide it (trackpad-up was dead in less)
-terminal, stream = make_terminal(rows=5, cols=20)
-Terminal._terminals[id(terminal)] = terminal
-terminal.view.id = lambda: id(terminal)
-command = make_command(terminal.view)
-stream.feed("hello")
-command.run(None)
-assert terminal.offset == 1, terminal.offset
-assert terminal.view.text.startswith("\nhello"), repr(terminal.view.text)
-command.run(None)  # only a fresh view is seeded
-assert terminal.offset == 1, terminal.offset
-del sublime._timeouts[:]  # drop the follow-scrolls the renders queued
-
-print("seed row tests passed (blank row above a fresh screen, seeded once)")
 
 
 # a row whose first cells were never written: they read back as default cells

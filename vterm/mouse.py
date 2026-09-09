@@ -1,8 +1,12 @@
-""" SGR mouse reporting while the app tracks the mouse; otherwise sublime keeps drag_select """
-import sublime
+""" SGR mouse reporting while the app tracks the mouse; otherwise sublime keeps drag_select
+
+The trackpad is not handled here. On macOS it never reaches a mousemap binding
+(sublime_text#1838), so it needs a utility such as LinearMouse to convert its
+continuous scrolling into discrete wheel events; those arrive as ordinary wheel
+notches and take the path below.
+"""
 import sublime_plugin
 
-from .render import following
 from .terminal import Terminal
 
 # SGR button numbers for the wheel; 64 is the "scroll" bit plus direction
@@ -12,10 +16,6 @@ WHEEL_DOWN = 65
 # lines per wheel tick, as iTerm2 delivers per notch; pi scrolls exactly one
 # line per report and has no setting of its own
 WHEEL_LINES = 3
-
-# trackpad poll period: the snapped-back displacement grows with it, and the
-# alt-screen up-scroll rate is capped at one line per tick (16 = one 60 Hz frame)
-TRACKPAD_POLL_MS = 24
 
 
 def send_scroll(terminal, up, lines, cell=None):
@@ -111,64 +111,3 @@ class VtermScrollCommand(sublime_plugin.TextCommand):
     def want_event(self):
         """Ask sublime for the wheel coordinates."""
         return True
-
-
-def start_trackpad(terminal):
-    """Start the poller that turns trackpad scrolling into wheel lines.
-
-    The trackpad never fires the mousemap scroll bindings on macOS
-    (sublime_text#1838); its only trace is viewport movement. While the app
-    owns the wheel the mousemap keeps the physical wheel off the viewport, so
-    any displacement from the follow anchor is trackpad scroll: harvest whole
-    lines from it, send them like wheel lines, and snap the viewport back.
-
-    The caller checks _trackpad_running; the first tick arms the baseline."""
-    terminal._trackpad_running = True
-    terminal._trackpad_engaged = True
-    terminal._trackpad_baseline = None
-    terminal._trackpad_browse_y = None
-    sublime.set_timeout(lambda: _trackpad_tick(terminal), TRACKPAD_POLL_MS)
-
-
-def _trackpad_tick(terminal):
-    """One poll: harvest viewport displacement, reschedule while captured."""
-    view = terminal.view
-    if Terminal.from_id(view.id()) is not terminal or not terminal.alive or not terminal._wheel_captured or not terminal.is_visible():
-        terminal._trackpad_running = False
-        return
-    anchor = terminal.viewport_y
-    extent = view.viewport_extent()[1]
-    if (anchor, extent) != terminal._trackpad_baseline:
-        # the renderer moved the anchor (follow-scroll, fold, resize): re-arm
-        # around the new position instead of reading the move as a gesture
-        terminal._trackpad_baseline = (anchor, extent)
-        terminal._trackpad_acc = 0.0
-    elif not terminal._trackpad_engaged:
-        # re-engaging mid-glide harvests the momentum as a gesture and snaps
-        # the view back on every tick, which reads as shaking. Wait for two
-        # ticks to agree that it has come to rest, then correct the overshoot
-        # in one step — it was browsing, not a scroll the app should hear about
-        y = view.viewport_position()[1]
-        if y == terminal._trackpad_browse_y and following(view, terminal):
-            terminal._trackpad_engaged = True
-            terminal._trackpad_acc = 0.0
-            view.set_viewport_position((0, anchor), False)
-        terminal._trackpad_browse_y = y
-    else:
-        dy = view.viewport_position()[1] - anchor
-        if dy == 0:
-            # at rest a stale fraction must not fire on the next gesture
-            terminal._trackpad_acc = 0.0
-        elif abs(dy) >= extent:
-            # scrollbar/minimap jump or page scroll, not a trackpad gesture:
-            # let the user browse until they return to the anchor
-            terminal._trackpad_engaged = False
-            terminal._trackpad_browse_y = None
-        else:
-            terminal._trackpad_acc += dy / view.line_height()
-            lines = int(terminal._trackpad_acc)
-            terminal._trackpad_acc -= lines
-            if lines:
-                send_scroll(terminal, up=lines < 0, lines=abs(lines))
-            view.set_viewport_position((0, anchor), False)
-    sublime.set_timeout(lambda: _trackpad_tick(terminal), TRACKPAD_POLL_MS)

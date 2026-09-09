@@ -94,8 +94,12 @@ class VtermOpenTerminalProjectFolderCommand(sublime_plugin.WindowCommand):
         parameters = [p.replace("%CWD%", cwd) for p in parameters]
         try:
             subprocess.Popen(
-                [terminal] + parameters, cwd=cwd, start_new_session=True,
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                [terminal] + parameters,
+                cwd=cwd,
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
         except OSError:
             LOG.exception("failed to start external terminal: terminal=%s", terminal)
@@ -126,7 +130,7 @@ class VtermInitializeViewCommand(sublime_plugin.TextCommand):
         view_settings.set("draw_white_space", "none")
         view_settings.set("draw_unicode_white_space", False)
         view_settings.set("draw_indent_guides", False)
-        view_settings.set("scroll_past_end", True)
+        view_settings.set("scroll_past_end", False)
         view_settings.set("scroll_context_lines", 0)
         view_settings.set("color_scheme", SCHEME_PATH)
         view_settings.set("syntax", "Packages/vterm/vterm.sublime-syntax")
