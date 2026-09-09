@@ -126,6 +126,7 @@ def start_trackpad(terminal):
     terminal._trackpad_running = True
     terminal._trackpad_engaged = True
     terminal._trackpad_baseline = None
+    terminal._trackpad_browse_y = None
     sublime.set_timeout(lambda: _trackpad_tick(terminal), TRACKPAD_POLL_MS)
 
 
@@ -143,9 +144,16 @@ def _trackpad_tick(terminal):
         terminal._trackpad_baseline = (anchor, extent)
         terminal._trackpad_acc = 0.0
     elif not terminal._trackpad_engaged:
-        if following(view, terminal):
+        # re-engaging mid-glide harvests the momentum as a gesture and snaps
+        # the view back on every tick, which reads as shaking. Wait for two
+        # ticks to agree that it has come to rest, then correct the overshoot
+        # in one step — it was browsing, not a scroll the app should hear about
+        y = view.viewport_position()[1]
+        if y == terminal._trackpad_browse_y and following(view, terminal):
             terminal._trackpad_engaged = True
             terminal._trackpad_acc = 0.0
+            view.set_viewport_position((0, anchor), False)
+        terminal._trackpad_browse_y = y
     else:
         dy = view.viewport_position()[1] - anchor
         if dy == 0:
@@ -155,6 +163,7 @@ def _trackpad_tick(terminal):
             # scrollbar/minimap jump or page scroll, not a trackpad gesture:
             # let the user browse until they return to the anchor
             terminal._trackpad_engaged = False
+            terminal._trackpad_browse_y = None
         else:
             terminal._trackpad_acc += dy / view.line_height()
             lines = int(terminal._trackpad_acc)

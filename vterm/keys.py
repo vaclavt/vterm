@@ -94,19 +94,26 @@ _SHIFT_KEY_MAP = {
     "enter": "\x1b\r",
 }
 
+# keys whose modified form has no unambiguous legacy encoding: ESC CR reads as
+# alt+enter, ctrl+space as NUL. An app that turned modifyOtherKeys on gets them
+# as CSI 27 ; <mod> ; <code> ~ instead
+_OTHER_KEYS = {"enter": 13, "tab": 9, "backspace": 127, "space": 32}
+
 
 def _modifier_code(ctrl, alt, shift):
     """xterm modifier parameter: 1 plus a bitmask of shift/alt/ctrl."""
     return 1 + (1 if shift else 0) + (2 if alt else 0) + (4 if ctrl else 0)
 
 
-def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False, new_line_mode=False):
+def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False, new_line_mode=False,
+                 modify_other_keys=0):
     """Escape sequence for a key name and its modifiers.
 
     Args:
         key: key name from the keymap, or a single literal character.
         application_mode: DECCKM is set, so cursor keys take their SS3 form.
         new_line_mode: LNM is set, so enter sends CR LF.
+        modify_other_keys: the level the app asked for with CSI > 4 ; n m.
 
     Returns:
         str: the bytes to write to the pty.
@@ -115,6 +122,9 @@ def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False
 
     if (ctrl or alt or shift) and key_lo in _MODIFIABLE_CSI:
         return _MODIFIABLE_CSI[key_lo].format(_modifier_code(ctrl, alt, shift))
+
+    if modify_other_keys and (ctrl or alt or shift) and key_lo in _OTHER_KEYS:
+        return "\x1b[27;{};{}~".format(_modifier_code(ctrl, alt, shift), _OTHER_KEYS[key_lo])
 
     if ctrl:
         base = key_lo

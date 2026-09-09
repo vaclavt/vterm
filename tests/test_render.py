@@ -519,9 +519,25 @@ assert not terminal._trackpad_engaged
 assert terminal.view.viewport == (0, ANCHOR - extent), "browsing must not snap"
 assert displace(-30) == "", "still browsing"
 terminal.view.viewport = (0, ANCHOR)
-tick()  # back at the anchor: re-engage
+tick()  # back at the anchor, but still gliding: nothing may pin it yet
+assert not terminal._trackpad_engaged
+tick()  # at rest on the anchor: re-engage
 assert terminal._trackpad_engaged
 assert displace(20) == "\x1b[<65;1;3M"
+
+# momentum carrying past the anchor must glide unpinned — pinning it mid-glide
+# is the shake — and be corrected in one step once it stops, without a report
+assert displace(-extent) == ""
+assert not terminal._trackpad_engaged
+terminal.process.written = ""
+terminal.view.viewport = (0, ANCHOR + 40)
+tick()
+assert terminal.view.viewport == (0, ANCHOR + 40), "gliding must not snap"
+assert not terminal._trackpad_engaged
+tick()
+assert terminal._trackpad_engaged
+assert terminal.view.viewport == (0, ANCHOR), terminal.view.viewport
+assert terminal.process.written == "", repr(terminal.process.written)
 
 # on the alt screen without tracking the same displacement turns into arrows
 stream.feed("\x1b[?1002l\x1b[?1006l\x1b[?1049h")
@@ -537,7 +553,7 @@ tick()
 assert not terminal._trackpad_running
 assert sublime._timeouts == [], sublime._timeouts
 
-print("trackpad tests passed (displacement harvested, fractions kept, jumps browse, poller unhooks)")
+print("trackpad tests passed (displacement harvested, fractions kept, jumps browse, momentum settles, poller unhooks)")
 
 
 # with the configured modifier PgUp/PgDn page the view and Up/Down move it one
@@ -639,6 +655,25 @@ assert terminal.process.written == "\x1b[6;5~", repr(terminal.process.written)
 plugin_settings.set("scroll_modifier", "shift")
 
 print("view scroll tests passed (a screen or a row per press, clamped to the anchor, configurable modifier)")
+
+
+# shift+enter through the whole keypress path: ESC CR by default, and the CSI 27
+# form once the app turned modifyOtherKeys on. pi enables it (its kitty probe
+# gets no flags from us) and reads a bare ESC CR as alt+enter, which submits
+press(key="enter", shift=True)
+assert terminal.process.written == "\x1b\r", repr(terminal.process.written)
+stream.feed("\x1b[>4;2m")
+press(key="enter", shift=True)
+assert terminal.process.written == "\x1b[27;2;13~", repr(terminal.process.written)
+press(key="enter")
+assert terminal.process.written == "\r", "unmodified enter still submits"
+press(key="c", ctrl=True)
+assert terminal.process.written == "\x03", "ctrl+c stays a control byte"
+stream.feed("\x1b[>4;0m")
+press(key="enter", shift=True)
+assert terminal.process.written == "\x1b\r", repr(terminal.process.written)
+
+print("modifyOtherKeys tests passed (shift+enter as CSI 27 while the app asks for it)")
 
 
 # a click in an unfocused group must focus the tab instead of reporting: we

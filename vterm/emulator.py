@@ -184,6 +184,7 @@ class VtScreen(pyte.Screen):
         super().reset()
         self.cursor = Cursor(0, 0)
         self.cursor_style = 0
+        self.modify_other_keys = 0
         self.history.clear()
         self._clear_callback()
 
@@ -191,6 +192,15 @@ class VtScreen(pyte.Screen):
         """Record the caret shape the app asked for; render maps it onto sublime."""
         # DECSCUSR: 0 default, 1/2 block, 3/4 underline, 5/6 bar; odd = blinking
         self.cursor_style = style
+
+    def set_modify_other_keys(self, resource=0, value=0):
+        """xterm CSI > 4 ; n m: send modified keys as CSI 27 ; mod ; code ~.
+
+        pi turns this on whenever the kitty probe answers with no flags, and
+        reads shift+enter no other way.
+        """
+        if resource == 4:
+            self.modify_other_keys = value
 
     def resize(self, lines=None, columns=None):
         """Resize the screen, pushing scrolled-off lines into scrollback.
@@ -617,7 +627,8 @@ class VtScreen(pyte.Screen):
 
     def report_kitty_keyboard(self):
         """Answer the kitty keyboard protocol probe."""
-        # 0 = unsupported, so apps fall back to legacy key encodings
+        # answering at all means "supported"; 0 flags means none are enabled,
+        # which is what steers pi onto its modifyOtherKeys fallback
         self.write_process_input("\x1b[?0u")
 
     def handle_osc(self, code, payload, terminator):
@@ -912,7 +923,9 @@ class VtStream(pyte.Stream):
                 listener.report_xtversion()
             elif final == "c":
                 listener.report_secondary_device_attributes(*params)
-            # '>m' modifyOtherKeys, '>u' kitty push: ignore
+            elif final == "m":
+                listener.set_modify_other_keys(*params)
+            # '>u' kitty push: ignore
             return
         if prefix:
             # kitty pop ('<u'), DECKPAM-style ('='): ignore

@@ -110,11 +110,13 @@ class Terminal:
         self._wheel_captured = False
         self._scroll_pending = False
         # trackpad poller (mouse.start_trackpad): reschedule guard, fractional
-        # line remainder, harvesting vs. browsing, last seen (anchor, extent)
+        # line remainder, harvesting vs. browsing, last seen (anchor, extent),
+        # viewport of the previous browsing tick
         self._trackpad_running = False
         self._trackpad_acc = 0.0
         self._trackpad_engaged = True
         self._trackpad_baseline = None
+        self._trackpad_browse_y = None
         self.pending_clear = False
         self.pending_clear_screen = False
         # a forced frame (set on activation); rendering stays on the renderer
@@ -290,6 +292,7 @@ class Terminal:
 
         def renderer():
             """Own the emulator: parse, then ask sublime to redraw, once per tick."""
+            settled_y = None
             while True:
                 # a hidden tab is not drawn at all: the screen keeps the state
                 # and one render on unhide catches the view up. The tick stays at
@@ -307,6 +310,21 @@ class Terminal:
                         # due first: _need_to_render consumes the cursor move it reports
                         if self.is_render_due() and self._need_to_render():
                             self.view.run_command("vterm_render")
+                            # a frame can move the viewport: a sample from
+                            # before it says nothing about coming to rest
+                            settled_y = None
+                        else:
+                            # the wheel can drag the screen off the top into
+                            # sublime's past-end room; a frame undoes that, and
+                            # an idle terminal draws none. Pinning while the
+                            # view is still gliding fights the trackpad's
+                            # momentum, which reads as shaking, so wait for two
+                            # ticks to agree that it has come to rest
+                            y = self.view.viewport_position()[1]
+                            if y == settled_y and self.viewport_y < y:
+                                from .render import request_scroll  # module-level import would cycle
+                                request_scroll(self.view, self)
+                            settled_y = y
                     self._sync_wheel_flag()
                     if done[0] or not self.is_hosted():
                         LOG.debug("[renderer] stops")
@@ -348,6 +366,7 @@ class Terminal:
         """Encode a key name plus modifiers for the app's current modes and send it."""
         kwargs["application_mode"] = APP_CURSOR_MODE in self.screen.mode
         kwargs["new_line_mode"] = mo.LNM in self.screen.mode
+        kwargs["modify_other_keys"] = self.screen.modify_other_keys
         self.send_string(get_key_code(**kwargs), normalized=False)
 
     def send_string(self, string, normalized=True):

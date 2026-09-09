@@ -41,7 +41,9 @@ takes `cmd`, `cwd`, `env` and `title`:
 { "caption": "vterm: pi", "command": "vterm_open", "args": {"cmd": ["pi"], "title": "pi"} }
 ```
 
-Keys: Shift+Enter sends `ESC CR` (newline in both agents). Shift+PgUp/PgDn page
+Keys: Shift+Enter sends `ESC CR`, or `CSI 27;2;13~` while the app has xterm
+modifyOtherKeys on — pi turns it on and reads a bare `ESC CR` as Alt+Enter,
+which submits instead of breaking the line. Shift+PgUp/PgDn page
 the view over the scrollback and Shift+Up/Down move it one line, instead of
 reaching the app, as xterm and kitty do — `scroll_modifier` moves that to Ctrl,
 or turns it off. Copy/paste use the normal Sublime keys, and pastes are
@@ -122,7 +124,9 @@ terminal protocols — see `Architecture.md`.
 
 Supported: alt screen (1049), synchronized output (2026), bracketed paste (2004),
 mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left click are reported; no
-drag, no right or middle button), focus events (1004), cursor styles (DECSCUSR —
+drag, no right or middle button), focus events (1004),
+xterm modifyOtherKeys (`CSI > 4 ; n m`, for the modified keys with no
+unambiguous legacy encoding: enter, tab, backspace, space), cursor styles (DECSCUSR —
 block/bar and blink/steady via the view's caret settings; underline falls back
 to bar, 0 is the default blinking block), scroll regions, autowrap,
 50 000 lines of scrollback that ED 3 does not erase (agents repaint with it;

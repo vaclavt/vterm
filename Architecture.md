@@ -200,6 +200,14 @@ the same way, and scrolling down clamps to the anchor `bottom_y` returns, which 
 it. A one-row scroll lands exactly on the tolerance boundary, so one Up closes the gate
 and one Down re-opens it.
 
+**Pinning waits for rest.** Two pollers put the viewport back on the anchor: the renderer
+tick, for a viewport dragged into sublime's past-end room on a terminal too idle to draw
+a frame, and the trackpad poller, when a browsing gesture returns to the anchor. Both
+compare the viewport against the position they saw one tick earlier and act only when the
+two agree. macOS keeps scrolling after the fingers lift, and a hard
+`set_viewport_position` against that momentum used to yank the view back thirty times a
+second for as long as the glide lasted — a visible shake at the bottom of every scroll.
+
 ### How colour is actually drawn
 
 `view.add_regions(key, regions, scope)` can only name a **scope**. It cannot take a
@@ -269,6 +277,8 @@ keymap binding (context: setting.vterm_view)
                              and Up/Down a row; stops here, never on the alt screen
   → Terminal.send_key()      adds application_mode (DECCKM), new_line_mode (LNM)
   → keys.get_key_code()      modified nav keys → CSI 1;<mod><final>
+                             enter/tab/backspace/space, modified, while the app
+                             asked for modifyOtherKeys → CSI 27;<mod>;<code>~
                              ctrl → control byte; alt → ESC prefix
                              plain → _KEY_MAP / _APP_MODE_KEY_MAP
   → Terminal.send_string(normalized=False)
@@ -446,7 +456,13 @@ how an app discovers what the terminal supports.
 - **XTVERSION** ✅ (`CSI > q`) — the terminal's name and version. Naming ourselves is what
   lets apps enable 2026 on a generic `TERM`.
 - **Kitty keyboard protocol** — a richer key encoding with release events. vterm answers
-  the probe with "unsupported", so apps fall back to the legacy encodings it does send.
+  the probe (`CSI ? u`) with zero flags, so apps fall back to something else — for pi that
+  is modifyOtherKeys, which it then enables unprompted.
+- **modifyOtherKeys** ✅ (`CSI > 4 ; n m`) — xterm's pre-kitty answer to the same problem:
+  keys whose modified form has no legacy encoding are sent as `CSI 27 ; <mod> ; <code> ~`.
+  While an app has it on, vterm uses that form for modified enter, tab, backspace and space —
+  Shift+Enter is `CSI 27;2;13~`, since a bare `ESC CR` is indistinguishable from Alt+Enter.
+  Ctrl+letters keep their control bytes, so Ctrl+C stays `\x03`.
 
 **Other terms**
 

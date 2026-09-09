@@ -54,10 +54,18 @@ def run_case(char_by_char):
     # and nothing leaked to the screen
     assert screen.buffer[0][0].data == " ", (tag, screen.buffer[0][0])
 
-    # modifyOtherKeys must not corrupt SGR state
+    # modifyOtherKeys: the level is tracked (pi enables it and reads shift+enter
+    # no other way), and the sequence must not corrupt SGR state
     proc, screen, stream = make()
+    assert screen.modify_other_keys == 0, tag
     feed(stream, "\x1b[>4;2mhello", char_by_char)
+    assert screen.modify_other_keys == 2, (tag, screen.modify_other_keys)
     assert screen.buffer[0][0].data == "h" and not screen.buffer[0][0].underscore, tag
+    feed(stream, "\x1b[>4;0m", char_by_char)
+    assert screen.modify_other_keys == 0, (tag, screen.modify_other_keys)
+    # another resource, and the bare form, leave it alone
+    feed(stream, "\x1b[>4;2m\x1b[>1;2m\x1b[>m", char_by_char)
+    assert screen.modify_other_keys == 2, (tag, screen.modify_other_keys)
 
     # OSC 11 color query answered; OSC 0 sets title; OSC 133 dropped
     proc, screen, stream = make()
