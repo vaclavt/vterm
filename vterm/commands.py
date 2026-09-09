@@ -6,13 +6,16 @@ import subprocess
 import sublime
 import sublime_plugin
 
-from .render import CONTINUATION, scroll_page
+from .render import CONTINUATION, scroll_view
 from .scheme import SCHEME_PATH, scheme_manager
 from .terminal import Terminal
 from .themes import THEMES
 from .utils import SETTINGS_FILE, settings
 
 LOG = logging.getLogger(__name__)
+
+# nav keys the view may consume from the app, with the modifier configured
+SCROLL_KEYS = ("pageup", "pagedown", "up", "down")
 
 
 class VtermOpenCommand(sublime_plugin.WindowCommand):
@@ -143,29 +146,31 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
         terminal = Terminal.from_id(self.view.id())
         if not terminal or not terminal.alive:
             return
-        if self.page_scrolled(terminal, **kwargs):
+        if self.view_scrolled(terminal, **kwargs):
             return
         # drop any selection so the caret follows the terminal cursor
         self.view.sel().clear()
         self.view.run_command("vterm_show_cursor")
         terminal.send_key(**kwargs)
 
-    def page_scrolled(self, terminal, key=None, **mods):
-        """Page the view one screen over the scrollback, before vterm_show_cursor,
-        whose scroll would pull the viewport straight back down. The alt screen
-        has its scrollback folded away, so an app there keeps the key.
+    def view_scrolled(self, terminal, key=None, **mods):
+        """Scroll the view over the scrollback, before vterm_show_cursor, whose
+        scroll would pull the viewport straight back down. PgUp/PgDn move a
+        screen, Up/Down one line. The alt screen has its scrollback folded
+        away, so an app there keeps the key.
 
         Returns:
             bool: the view consumed the key; False sends it to the app.
         """
         # the cheap tests first: this runs on every keystroke
-        if key not in ("pageup", "pagedown") or not mods or terminal.screen.alternate_buffer_mode:
+        if key not in SCROLL_KEYS or not mods or terminal.screen.alternate_buffer_mode:
             return False
-        modifier = settings().get("page_scroll_modifier", "shift")
+        modifier = settings().get("scroll_modifier", "shift")
         # exact match: ctrl+shift+pageup still belongs to the app
         if not modifier or {m for m, on in mods.items() if on} != set(modifier.split("+")):
             return False
-        scroll_page(self.view, terminal, up=(key == "pageup"))
+        lines = 1 if key in ("up", "down") else terminal.screen.lines
+        scroll_view(self.view, terminal, up=key in ("up", "pageup"), lines=lines)
         return True
 
 

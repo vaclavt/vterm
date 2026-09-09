@@ -42,40 +42,33 @@ takes `cmd`, `cwd`, `env` and `title`:
 ```
 
 Keys: Shift+Enter sends `ESC CR` (newline in both agents). Shift+PgUp/PgDn page
-the view over the scrollback instead of reaching the app, as xterm and kitty do
-— `page_scroll_modifier` moves that to Ctrl, or turns it off. Copy/paste use the
-normal Sublime keys, and pastes are bracketed when the app asks for it. Copying
-re-joins soft-wrapped lines. The wheel scrolls the view normally; while the app
-tracks the mouse the wheel and left click go to it instead, and on the alternate
-screen without tracking each wheel tick sends arrow keys (alternate scroll, as
-kitty/iTerm2 do — this is what scrolls Claude Code's fullscreen UI before it
-enables mouse reporting). While an app owns the alternate screen the scrollback
-above it is folded away, kitty-style, and unfolds when the app leaves it.
-
-The caret follows DECSCUSR, so zsh vi-mode can show a block cursor in normal
-mode. The shell must emit the sequence — add to `~/.zshrc`:
-
-```zsh
-function zle-keymap-select zle-line-init {
-    case $KEYMAP in
-        vicmd) print -n '\e[1 q' ;;  # blinking block
-        *)     print -n '\e[5 q' ;;  # blinking bar
-    esac
-}
-zle -N zle-keymap-select
-zle -N zle-line-init
-```
+the view over the scrollback and Shift+Up/Down move it one line, instead of
+reaching the app, as xterm and kitty do — `scroll_modifier` moves that to Ctrl,
+or turns it off. Copy/paste use the normal Sublime keys, and pastes are
+bracketed when the app asks for it. Copying re-joins soft-wrapped lines. The
+wheel scrolls the view normally; while the app tracks the mouse the wheel and
+left click go to it instead, and on the alternate screen without tracking each
+wheel tick sends arrow keys (alternate scroll, as kitty/iTerm2 do — this is
+what scrolls Claude Code's fullscreen UI before it enables mouse reporting).
+Sublime raises no wheel event at all for the trackpad (sublime_text#1838), so
+while the app owns the wheel a poller reads the viewport movement instead,
+sends it as scroll lines and pins the view back. A jump of a whole screen or
+more — the scrollbar, the page keys — is left alone, so the scrollback is still
+yours to browse until you come back to the bottom. While an app owns the
+alternate screen the scrollback above it is folded away, kitty-style, and
+unfolds when the app leaves it.
 
 ## Settings
 
-`vterm.sublime-settings`: `auto_close` (close the tab when the process exits; off
-leaves it open with a `[process exited with code N]` line),
-`scrollback_history_size`, `page_scroll_modifier` (the modifier for the PgUp/PgDn
-page scroll; `null` gives both keys to the app), `min_columns` / `max_columns`,
-`terminal` / `parameters` (the external terminal for *vterm: Open Terminal in
-Project Folder*; `%CWD%` in `parameters` is replaced with the project folder,
-defaulting to Apple Terminal, with kitty commented out beside it), `debug`
-(verbose logging to the ST console), plus the colours:
+`vterm.sublime-settings`: `auto_close` (close the tab when the process exits;
+off leaves it open with a `[process exited with code N]` line),
+`scrollback_history_size`, `scroll_modifier` (the modifier that scrolls the
+view with PgUp/PgDn and Up/Down; `null` gives all four keys to the app),
+`min_columns` / `max_columns`, `terminal` / `parameters` (the external terminal
+for *vterm: Open Terminal in Project Folder*; `%CWD%` in `parameters` is
+replaced with the project folder, defaulting to Apple Terminal, with kitty
+commented out beside it), `debug` (verbose logging to the ST console), plus the
+colours:
 
 - `theme` — `"default"` (Terminal.app Basic, light), `"homebrew"`, `"pro"`,
   `"slate"`, or `null` to follow the active Sublime colour scheme. Set it with
@@ -123,7 +116,9 @@ terminal protocols — see `Architecture.md`.
   leave the character behind. `on_modified` in `vterm/listeners.py` remains the
   fallback for IME and composed input.
 - `vterm/mouse.py` — SGR mouse reporting (wheel, click) when the app enables
-  tracking; native selection and scrolling otherwise.
+  tracking; native selection and scrolling otherwise. The trackpad reaches no
+  mousemap on macOS, so while the app owns the wheel a 24 ms poller harvests
+  viewport displacement into the same reports.
 
 Supported: alt screen (1049), synchronized output (2026), bracketed paste (2004),
 mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left click are reported; no
@@ -151,6 +146,8 @@ instead), image protocols, Windows, panels.
   input, so close it and open a new one.
 - CJK and emoji rely on wcwidth agreeing with Sublime's font metrics; where they
   disagree the caret can drift.
+- Trackpad scroll into an app is polled and rounded to whole lines, so it is
+  coarser than the wheel in a native terminal.
 
 ## Dev
 

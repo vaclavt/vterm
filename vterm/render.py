@@ -554,14 +554,14 @@ def scroll_to_cursor(view, terminal):
     view.set_viewport_position((0, y), False)
 
 
-def scroll_page(view, terminal, up):
-    """Move the viewport one screen over the scrollback.
+def scroll_view(view, terminal, up, lines):
+    """Move the viewport `lines` rows over the scrollback.
 
     Not sublime's scroll_lines: it animates, and while the viewport is still
     within a line of where it started the follow-scroll gate reads that as "at
     the bottom" and pulls it back down.
     """
-    delta = terminal.screen.lines * view.line_height()
+    delta = lines * view.line_height()
     y = view.viewport_position()[1]
     y = max(y - delta, 0) if up else min(y + delta, bottom_y(view, terminal))
     view.set_viewport_position((0, y), False)

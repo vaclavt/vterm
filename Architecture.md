@@ -34,7 +34,7 @@ Constraints it works under:
 | `vterm/themes.py` | The built-in palettes (`default`, `homebrew`, `pro`, `slate`). |
 | `vterm/commands.py` | The Sublime commands: open, keypress, copy/paste, theme picker, clear, cleanup, close. |
 | `vterm/listeners.py` | `VtermCoreEventListener`: focus, IME capture, copy/paste rerouting, the mousemap context. |
-| `vterm/mouse.py` | Wheel and click handling. |
+| `vterm/mouse.py` | Wheel and click handling, and the trackpad poller. |
 | `vterm/keys.py` | Key name + modifiers → escape sequence tables. |
 | `vterm/utils.py` | `settings()`, the `responsive` throttle, the `intermission` pacer, `rev_wcwidth`. |
 
@@ -74,8 +74,9 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
 - **`SchemeManager`** (`scheme.py`) — module singleton `scheme_manager`. Owns the
   generated scheme file and the mapping from colour combination to scope name.
 - **`VtermRenderCommand`** (`render.py`) — Sublime keeps **one command instance per
-  view**, so its `colored_lines`, `_row_cache`, `_key_counter` and `_lastrow` are that
-  view's render state.
+  view**, so its `colored_lines`, `_row_cache`, `_key_counter`, the scrollback chunk
+  bookkeeping (`_archived_chunks`, `_open_rows`, `_open_chunk`, `_trimmed`) and
+  `_lastrow` are that view's render state.
 
 ### Commands
 
@@ -132,6 +133,8 @@ child writes
    │   _need_to_render()?          dirty rows, a pending clear, or a
    │                               moved cursor
    │   view.run_command("vterm_render")
+   │   _sync_wheel_flag()          publishes the mousemap gate, and starts the
+   │                               trackpad poller while the app owns the wheel
    │
    └─ UI thread ──────────────────────────────────────────────────
        VtermRenderCommand.run(edit)
@@ -180,6 +183,9 @@ view row of screen row 0. When the emulator retires lines into `screen.history`,
 renderer drains them, advances `offset` by that many rows, and writes them at their now
 permanent view rows. **Once a line leaves `screen.history`, its only copy is the view
 text** — which is why the alternate screen *folds* the scrollback rather than deleting it.
+A fresh view is given one blank scrollback row before anything else: Sublime lays out
+nothing above row 0, and the trackpad poller needs that slack to see an upward gesture at
+all — on the alt screen no line ever retires to provide it.
 
 **The row cache.** pyte's `dirty` set is a repaint *hint*, not a diff: scrolling one line
 marks every row dirty, and a TUI repaints whole frames. `update_line` compares
@@ -189,8 +195,10 @@ keeps a full-screen repaint from costing hundreds of cross-process calls.
 **The follow-scroll gate.** `following()` compares the viewport against
 `terminal.viewport_y`, where the last auto-scroll left it. Above that, the user scrolled
 up by hand, and trimming, caret placement and scrolling are all skipped so their position
-survives the next frame. `scroll_page` (the PgUp/PgDn chord) closes the gate the same way,
-and paging down clamps to the anchor `bottom_y` returns, which re-opens it.
+survives the next frame. `scroll_view` (the PgUp/PgDn and Up/Down chords) closes the gate
+the same way, and scrolling down clamps to the anchor `bottom_y` returns, which re-opens
+it. A one-row scroll lands exactly on the tolerance boundary, so one Up closes the gate
+and one Down re-opens it.
 
 ### How colour is actually drawn
 
@@ -236,11 +244,15 @@ Details worth knowing before touching `scheme.py`:
 
 ### The alternate screen
 
-While an app owns the alternate buffer, `sync_alt_fold` folds rows `0..offset-1` away and
-sets `scroll_past_end` to false, leaving the view with no scroll range — the app's own
-scrolling is the only scrolling. The fold is re-checked every frame, not just on
-transitions, because the screen's first row is rewritten on every region scroll and an
-edit at the fold boundary can silently break a fold. The emulator side
+While an app owns the alternate buffer, `sync_alt_fold` folds rows `0..offset-1` away, so
+the view shows the app's screen alone. The scroll range is deliberately left in place: the
+trackpad poller pins the viewport and needs the slack to read a gesture. The fold is
+re-checked every frame, not just on transitions, because the screen's first row is
+rewritten on every region scroll and an edit at the fold boundary can silently break a
+fold. Entering the alt screen collapses the layout, so that transition also zeroes
+`terminal.viewport_y`; a stale anchor would hold the follow-scroll gate shut. A fold
+merely repaired keeps the anchor, or the boundary row apps rewrite on every scroll would
+thrash the poller. The emulator side
 (`switch_to_screen`) swaps in a `maxlen=0` history, so a full-screen app never pushes its
 frames into scrollback.
 
@@ -253,8 +265,8 @@ normal mode) would leave the typed character sitting in the view.
 ```
 keymap binding (context: setting.vterm_view)
   → VtermKeypressCommand.run(key=…, ctrl=…, alt=…, shift=…)
-  → page_scroll()            PgUp/PgDn with page_scroll_modifier scrolls the view
-                             and stops here; never on the alternate screen
+  → view_scrolled()          with scroll_modifier, PgUp/PgDn scroll the view a page
+                             and Up/Down a row; stops here, never on the alt screen
   → Terminal.send_key()      adds application_mode (DECCKM), new_line_mode (LNM)
   → keys.get_key_code()      modified nav keys → CSI 1;<mod><final>
                              ctrl → control byte; alt → ESC prefix
@@ -291,6 +303,17 @@ which produces three cases:
 3. **Neither** → the binding does not match at all and Sublime scrolls the view over the
    real scrollback text.
 
+**The trackpad** fires none of that: on macOS it never reaches a mousemap binding
+(sublime_text#1838), and its only trace is the viewport moving. So while the wheel flag is
+up, `start_trackpad` runs a 24 ms timer chain, and any displacement from the follow anchor
+is a gesture — whole lines of it go out through the same `send_scroll` as the wheel, the
+fraction is carried into the next tick, and the viewport is pinned back to the anchor. A
+displacement of a viewport or more is a scrollbar drag or a page scroll instead: the poller
+disengages and lets the user browse until they return to the anchor. `_sync_wheel_flag`
+restarts the chain within a frame or two of it stopping on a hidden tab or a capture flap,
+and `scroll_to_cursor` yields while the poller owns the pin — apps repaint mid-gesture, and
+re-pinning there would discard displacement not yet harvested.
+
 Clicks: `VtermMouseEventListener` intercepts `drag_select` only when the app tracks the
 mouse, and only the plain single-button form, so shift-click and add-selection stay
 native. The first click on an unfocused tab only focuses it — we replaced the command
@@ -312,7 +335,7 @@ that normally does that — and subsequent clicks send a press/release pair.
 
 | Thread | Runs | Touches |
 |---|---|---|
-| UI | commands, listeners, `Terminal.start`, `scroll_to_cursor`, clipboard | Sublime API; small pty writes go out here too |
+| UI | commands, listeners, `Terminal.start`, `scroll_to_cursor`, `_trackpad_tick`, clipboard | Sublime API; small pty writes go out here too |
 | reader | `process.read`, decode, `chunks.append` | no Sublime API, no screen state |
 | renderer | `stream.feed`, then `run_command("vterm_render")` | owns the emulator |
 | paste drain | transient; empties the 4096-byte chunk queue | pty only |
@@ -334,9 +357,9 @@ replaces both together.
 
 **Plugin settings** (`vterm.sublime-settings`, read through the cached `settings()`
 handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`,
-`page_scroll_modifier`, `min_columns`, `max_columns`, `theme`, `ansi_colors`, `terminal`,
-`parameters`, `debug`. `page_scroll_modifier` is the modifier that turns PgUp/PgDn into a
-page scroll of the view instead of a key for the app. `terminal` and
+`scroll_modifier`, `min_columns`, `max_columns`, `theme`, `ansi_colors`, `terminal`,
+`parameters`, `debug`. `scroll_modifier` is the modifier that turns PgUp/PgDn and Up/Down
+into a scroll of the view — a page, a row — instead of a key for the app. `terminal` and
 `parameters` name the external terminal spawned by *vterm: Open Terminal in Project
 Folder* (`%CWD%` in `parameters` becomes the project folder). ED 3 never touches the visible screen (as in
 xterm), and `honor_erase_scrollback` is off, so it does not drop the scrollback either:
@@ -353,9 +376,8 @@ defuses Vintage mode inside a terminal). The view is also set scratch, so closin
 prompts to save.
 
 **Written at runtime**: `vterm_view.finished` (latched by cleanup; also disables the
-Escape binding for a dead tab), `vterm_view.wheel_captured` (the mousemap gate),
-`scroll_past_end` (toggled by the alt-screen fold), and `block_caret` / `caret_style`
-(from DECSCUSR; style 0 is the terminal default, a blinking block).
+Escape binding for a dead tab), `vterm_view.wheel_captured` (the mousemap gate), and
+`block_caret` / `caret_style` (from DECSCUSR; style 0 is the terminal default, a blinking block).
 
 **Contexts.** Keymap bindings use the native `setting.vterm_view`, evaluated in
 Sublime's own process — a plugin `on_query_context` would cost a round trip on every

@@ -540,9 +540,9 @@ assert sublime._timeouts == [], sublime._timeouts
 print("trackpad tests passed (displacement harvested, fractions kept, jumps browse, poller unhooks)")
 
 
-# PgUp/PgDn with the configured modifier pages the view instead of reaching the
-# app; every other combination is sent as before. 24 scrollback rows above an
-# 8-row screen, viewport at the follow anchor
+# with the configured modifier PgUp/PgDn page the view and Up/Down move it one
+# row, instead of reaching the app; every other combination is sent as before.
+# 24 scrollback rows above an 8-row screen, viewport at the follow anchor
 terminal, stream = make_terminal(rows=8, cols=20)
 Terminal._terminals[id(terminal)] = terminal
 terminal.view.id = lambda: id(terminal)
@@ -581,6 +581,21 @@ assert y == anchor, y
 # paging back onto the anchor re-opens the gate
 assert following(terminal.view, terminal)
 
+# the arrows move one row rather than a screen
+y = press(key="up", shift=True)
+assert y == anchor - LINE_HEIGHT, y
+assert terminal.process.written == "", repr(terminal.process.written)
+# one row up is the edge of the gate's one-line tolerance; it must still close
+assert not following(terminal.view, terminal)
+
+for _ in range(30):
+    y = press(key="up", shift=True)
+assert y == 0, y
+for _ in range(30):
+    y = press(key="down", shift=True)
+assert y == anchor, y
+assert following(terminal.view, terminal)
+
 # a bare or differently modified key still belongs to the app
 press(key="pageup")
 assert terminal.process.written == "\x1b[5~", repr(terminal.process.written)
@@ -589,28 +604,41 @@ assert terminal.process.written == "\x1b[5;5~", repr(terminal.process.written)
 y = press(key="pageup", ctrl=True, shift=True)
 assert terminal.process.written == "\x1b[5;6~", repr(terminal.process.written)
 assert y == anchor, "the app's keys must not scroll"
+press(key="up")
+assert terminal.process.written == "\x1b[A", repr(terminal.process.written)
+y = press(key="up", ctrl=True, shift=True)
+assert terminal.process.written == "\x1b[1;6A", repr(terminal.process.written)
+assert y == anchor, "the app's keys must not scroll"
 
-# the alt screen is folded away: nothing to page, so the app keeps the key
+# the alt screen is folded away: nothing to scroll, so the app keeps the keys
 stream.feed("\x1b[?1049h")
 press(key="pageup", shift=True)
 assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+press(key="up", shift=True)
+assert terminal.process.written == "\x1b[1;2A", repr(terminal.process.written)
 stream.feed("\x1b[?1049l")
 
-# the modifier is configurable, and null hands both keys back to the app
-plugin_settings.set("page_scroll_modifier", "ctrl")
+# the modifier is configurable, and null hands every key back to the app
+plugin_settings.set("scroll_modifier", "ctrl")
 y = press(key="pageup", ctrl=True)
 assert y == anchor - PAGE, y
+y = press(key="up", ctrl=True)
+assert y == anchor - PAGE - LINE_HEIGHT, y
 press(key="pageup", shift=True)
 assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+press(key="up", shift=True)
+assert terminal.process.written == "\x1b[1;2A", repr(terminal.process.written)
 
-plugin_settings.set("page_scroll_modifier", None)
+plugin_settings.set("scroll_modifier", None)
 press(key="pageup", shift=True)
 assert terminal.process.written == "\x1b[5;2~", repr(terminal.process.written)
+press(key="up", shift=True)
+assert terminal.process.written == "\x1b[1;2A", repr(terminal.process.written)
 press(key="pagedown", ctrl=True)
 assert terminal.process.written == "\x1b[6;5~", repr(terminal.process.written)
-plugin_settings.set("page_scroll_modifier", "shift")
+plugin_settings.set("scroll_modifier", "shift")
 
-print("page scroll tests passed (one screen per press, clamped to the anchor, configurable modifier)")
+print("view scroll tests passed (a screen or a row per press, clamped to the anchor, configurable modifier)")
 
 
 # a click in an unfocused group must focus the tab instead of reporting: we
