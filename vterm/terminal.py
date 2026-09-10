@@ -24,8 +24,8 @@ RENDER_PERIOD = 0.03
 # draw rate for a visible terminal the user is not typing in, ~15 fps
 UNFOCUSED_RENDER_PERIOD = 0.075
 
-# max chars parsed per tick, so a giant burst still renders intermediate frames
-FEED_LIMIT = 256 * 1024
+# max chars parsed per tick, so a giant burst still renders intermediate frames.
+FEED_LIMIT = 48 * 1024
 
 # SUPPRESS_HISTORY_AFTER_CLEAR in emulator.py must outlast this
 REPAINT_NUDGE_DELAY = 0.25

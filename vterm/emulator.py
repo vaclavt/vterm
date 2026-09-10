@@ -147,7 +147,9 @@ class VtScreen(pyte.Screen):
         self._default_char = Char(data=" ", fg="default", bg="default", reverse=False)
         # SGR transitions repeat endlessly in TUI output; memoized per (attrs, params)
         self._sgr_cache = {}
-        # chars are identical while cursor.attrs is unchanged (draw rebuilds per run)
+        # one char -> Char cache per attribute set; attrs recur constantly in
+        # coloured output, so the caches are kept rather than rebuilt on a change
+        self._char_caches = {}
         self._char_cache = {}
         self._cache_attrs = None
         self.history = deque(maxlen=history)
@@ -164,6 +166,8 @@ class VtScreen(pyte.Screen):
         """RIS: reset the screen along with the cursor, scrollback and caches"""
         self._default_char = Char(data=" ", fg="default", bg="default", reverse=False)
         self._sgr_cache.clear()
+        self._char_caches.clear()
+        self._cache_attrs = None
         super().reset()
         self.cursor = Cursor(0, 0)
         self.cursor_style = 0
@@ -331,10 +335,17 @@ class VtScreen(pyte.Screen):
         cursor = self.cursor
         buffer = self.buffer
         columns = self.columns
-        # per-run cache: cells differ only by their data while attrs are unchanged
-        if cursor.attrs is not self._cache_attrs:
-            self._cache_attrs = cursor.attrs
-            self._char_cache = {}
+        attrs = cursor.attrs
+        # cells differ only by their data within one attribute set; the cache is
+        # picked per set, not discarded, or colour changes would thrash it
+        if attrs is not self._cache_attrs:
+            self._cache_attrs = attrs
+            cache = self._char_caches.get(attrs)
+            if cache is None:
+                if len(self._char_caches) > 256:
+                    self._char_caches.clear()
+                cache = self._char_caches[attrs] = {}
+            self._char_cache = cache
         cache = self._char_cache
         line = buffer[cursor.y]
 
@@ -356,12 +367,12 @@ class VtScreen(pyte.Screen):
                     self.insert_characters(char_width)
                 cell = cache.get(char)
                 if cell is None:
-                    cell = cache[char] = cursor.attrs._replace(data=char)
+                    cell = cache[char] = attrs._replace(data=char)
                 line[cursor.x] = cell
                 if char_width == 2 and cursor.x + 1 < columns:
                     filler = cache.get("")
                     if filler is None:
-                        filler = cache[""] = cursor.attrs._replace(data="")
+                        filler = cache[""] = attrs._replace(data="")
                     line[cursor.x + 1] = filler
             # a combining mark belongs to the cell before it, which may be the
             # last column of the previous row
@@ -391,9 +402,10 @@ class VtScreen(pyte.Screen):
                 break
 
             if char_width > 0:
-                self.cursor.x = min(self.cursor.x + char_width, self.columns)
+                x = cursor.x + char_width
+                cursor.x = x if x < columns else columns
 
-        self.dirty.add(self.cursor.y)
+        self.dirty.add(cursor.y)
 
     def index(self):
         """Line feed; at the bottom of the primary screen the top row goes to scrollback."""
