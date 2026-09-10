@@ -52,10 +52,10 @@ def intermission(period=0.1):
 
 
 def rev_wcwidth(text, width):
-    """Return the index into `text` at which the substring reaches `width` cells.
+    """Index into `text` at which the substring reaches `width` cells.
 
-    The inverse of wcswidth: maps a terminal column back onto a character
-    index, so a wide char or a tab does not put the caret in the wrong place.
+    The inverse of wcswidth: maps a terminal column back onto a character index,
+    so a wide char or a tab does not put the caret in the wrong place.
     """
     if width == 0:
         return -1

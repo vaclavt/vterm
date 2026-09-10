@@ -150,8 +150,7 @@ class Terminal:
         """Whether an unfocused terminal may draw again.
 
         A frame costs a command dispatch and a dozen UI round trips however
-        little changed, so a terminal the user is only watching gets them at a
-        lower rate than one they are typing in.
+        little changed, so a terminal the user only watches draws at a lower rate.
         """
         if self.focused:
             return True
@@ -236,8 +235,7 @@ class Terminal:
 
     def _start_rendering(self):
         """Start the reader and renderer threads that drive this terminal."""
-        # deque appends/poplefts are atomic, so the reader never blocks behind
-        # a render; a lock here used to backpressure the pty for whole frames
+        # deque appends/poplefts are atomic, so the reader never blocks behind a render
         chunks = deque()
         done = [False]
 
@@ -274,8 +272,8 @@ class Terminal:
                 try:
                     self.stream.feed("".join(parts))
                 except Exception:
-                    # pyte resets its parser before re-raising, so the terminal
-                    # can carry on; letting this escape would kill the thread
+                    # the parser resets itself before re-raising; letting this
+                    # escape would kill the renderer thread
                     LOG.exception("stream.feed failed, dropping the rest of a chunk")
 
         def renderer():
@@ -322,7 +320,7 @@ class Terminal:
             LOG.warning("resize failed", exc_info=True)
 
     def nudge_repaint(self):
-        """Make the app repaint by briefly narrowing the pty. Never write ctrl+L instead: it is /clear in Claude Code"""
+        """Make the app repaint by briefly narrowing the pty. Never write ctrl+L instead: apps bind it themselves"""
         rows, columns = self.screen.lines, self.screen.columns
         self._set_winsize(rows, max(columns - 1, 1))
         sublime.set_timeout(lambda: self._set_winsize(rows, columns), int(REPAINT_NUDGE_DELAY * 1000))
@@ -342,12 +340,9 @@ class Terminal:
         self.send_string(get_key_code(**kwargs), normalized=False)
 
     def send_string(self, string, normalized=True):
-        """Write text to the pty, chunking anything large.
-
-        Args:
-            normalized: canonicalise line endings for the app's LNM setting;
-                off for escape sequences, which must go through untouched.
-        """
+        """Write text to the pty, chunking anything large"""
+        # escape sequences go through untouched; typed and pasted text has its
+        # line endings canonicalised for the app's LNM setting
         if normalized:
             string = string.replace("\r\n", "\n")
             if mo.LNM in self.screen.mode:
@@ -387,8 +382,6 @@ class Terminal:
 
     def _sync_wheel_flag(self):
         """Publish whether the app owns the wheel, for the mousemap context."""
-        # the mousemap routes the wheel to the app while it reports the mouse
-        # or owns the alt screen; VtermScrollCommand picks the encoding
         captured = self.screen.mouse_reporting_enabled() or self.screen.alternate_buffer_mode
         if captured != self._wheel_captured:
             self._wheel_captured = captured

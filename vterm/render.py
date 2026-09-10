@@ -12,7 +12,7 @@ import sublime
 import sublime_plugin
 from wcwidth import wcswidth
 
-# per-cell call in segment_buffer_line; pyte caches its own wcwidth likewise
+# per-cell call in segment_buffer_line
 cell_width = lru_cache(maxsize=4096)(wcswidth)
 
 from .scheme import scheme_manager
@@ -125,8 +125,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         """Set up this view's render caches."""
         super().__init__(*args, **kwargs)
         self.colored_lines = {}
-        # view row -> (segments, lf) as last rendered; pyte's dirty means
-        # "repaint hint", so most dirty rows are identical frame to frame
+        # view row -> (segments, lf) as last rendered; the dirty set is only a
+        # repaint hint, so most dirty rows are identical frame to frame
         self._row_cache = {}
         self._key_counter = 0
         # chunk ordinal -> scopes it holds a key for; ordinals are view row +
@@ -199,11 +199,11 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         screen.dirty.clear()
 
     def sync_alt_fold(self, terminal):
-        """Hide the scrollback while the app owns the alt screen: fold it away
-        (the view text is its only copy).
-        The fold is re-checked every render — the screen's first row is
-        replaced on every region scroll, and an edit at the fold boundary can
-        silently disturb a fold."""
+        """Fold the scrollback away while the app owns the alt screen; the view text is its only copy.
+
+        Re-checked every render: an edit at the fold boundary can silently
+        disturb a fold, and the screen's first row is replaced on every scroll.
+        """
         view = self.view
         alt = terminal.screen.alternate_buffer_mode
         if not alt and not terminal.applied_alt_screen:
@@ -303,17 +303,11 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
                 self.update_line(edit, line + offset, buffer_line, columns)
 
     def update_line(self, edit, line, buffer_line, columns):
-        """Rewrite one view row from a screen row, unless it is unchanged.
-
-        Args:
-            line: absolute view row.
-            columns: screen width; the last cell's linefeed flag marks a soft
-                wrap, which gets the CONTINUATION sentinel.
-        """
+        """Rewrite one view row from a screen row, unless it is unchanged"""
         view = self.view
         lf = buffer_line[columns - 1].linefeed
         segments = list(segment_buffer_line(buffer_line))
-        # pyte's dirty set is a repaint hint, not a diff: most dirty rows come
+        # the dirty set is a repaint hint, not a diff: most dirty rows come
         # back identical, and rewriting one costs an edit plus its region churn
         rendered = (segments, lf)
         if self._row_cache.get(line) == rendered:
@@ -373,16 +367,10 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
     def flush_chunk(self):
         """Merge the queued rows onto shared per-(scope, chunk) keys.
 
-        A scrollback row is never repainted, so its per-row keys used to live
-        until trimmed: a long coloured session held ~15k region keys, and every
-        key is a separate pass in sublime's redraw. Merging bounds the count at
-        scopes x (scrollback / CHUNK).
-
-        The merge waits for the chunk to close, because add_regions replaces a
-        key's whole set: merging every frame re-sent everything accumulated so
-        far, which is quadratic in CHUNK when output arrives a few rows a frame.
-        Until then the rows keep their per-row keys, so the count is bounded by
-        scopes x chunks plus one chunk's worth.
+        Every region key is a separate pass in sublime's redraw, so merging
+        bounds the count at scopes x (scrollback / CHUNK) plus one open chunk.
+        The merge waits for the chunk to close: add_regions replaces a key's
+        whole set, so merging every frame would be quadratic in CHUNK.
         """
         view = self.view
         rows, chunk = self._open_rows, self._open_chunk
@@ -526,8 +514,7 @@ def following(view, terminal):
 
 def bottom_y(view, terminal):
     """Viewport y that pins the bottom of the live screen to the bottom of the view."""
-    # layout_extent is maintained incrementally; text_to_layout(size()) forced
-    # a whole-buffer layout on every call
+    # layout_extent is maintained incrementally, unlike text_to_layout(size())
     viewport_y = view.layout_extent()[1] - view.viewport_extent()[1]
     offset_y = view.text_to_layout(view.text_point(terminal.offset, 0))[1]
     return max(offset_y, viewport_y)
@@ -566,9 +553,7 @@ class VtermShowCursorCommand(sublime_plugin.TextCommand):
     which has no edit token of its own."""
 
     def run(self, edit, scroll=True):
-        """Args:
-        scroll: also follow the output down to the cursor.
-        """
+        """Place the caret at the terminal cursor, optionally following the output down"""
         view = self.view
         terminal = Terminal.from_id(view.id())
         if not terminal:

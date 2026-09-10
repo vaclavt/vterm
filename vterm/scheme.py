@@ -116,7 +116,7 @@ class SchemeManager:
             self._listeners.remove(callback)
 
     def reload(self):
-        """Rebuild every rule for a new palette; colours resolve at add time, so they cannot be appended"""
+        """Rebuild every rule for a new palette, then notify the terminals"""
         if not self._initialized:
             # no scheme file to maintain yet; initialize() will read the setting
             return

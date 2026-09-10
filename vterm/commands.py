@@ -22,14 +22,7 @@ class VtermOpenCommand(sublime_plugin.WindowCommand):
     """Open a terminal in a new tab. `vterm_open`, the only entry point users bind."""
 
     def run(self, cmd=None, cwd=None, env=None, title=None):
-        """Start `cmd` (default: a login shell) in a fresh view.
-
-        Args:
-            cwd: defaults to the first project folder, else the active file's
-                directory, else the home directory.
-            env: extra environment on top of the child defaults.
-            title: tab name; the program name unless the app sets its own.
-        """
+        """Start `cmd` (default: a login shell) in a fresh view"""
         window = self.window
 
         if not cmd:
@@ -38,7 +31,7 @@ class VtermOpenCommand(sublime_plugin.WindowCommand):
         elif isinstance(cmd, str):
             cmd = [cmd]
 
-        # the app may override the title via OSC 0/2 later
+        # cwd: the first project folder, else the active file's directory, else home
         if not cwd:
             folders = window.folders()
             view = window.active_view()
@@ -144,9 +137,7 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
     """Sends one key to the app. Every key binding in the generated keymap lands here."""
 
     def run(self, _, **kwargs):
-        """Args:
-        kwargs: key name plus modifier flags, straight from the keymap.
-        """
+        """Send one key; the name and modifier flags come straight from the keymap"""
         terminal = Terminal.from_id(self.view.id())
         if not terminal or not terminal.alive:
             return
@@ -158,13 +149,11 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
         terminal.send_key(**kwargs)
 
     def view_scrolled(self, terminal, key=None, **mods):
-        """Scroll the view over the scrollback, before vterm_show_cursor, whose
-        scroll would pull the viewport straight back down. PgUp/PgDn move a
-        screen, Up/Down one line. The alt screen has its scrollback folded
-        away, so an app there keeps the key.
+        """Whether the view consumed the key by scrolling over the scrollback.
 
-        Returns:
-            bool: the view consumed the key; False sends it to the app.
+        Runs before vterm_show_cursor, whose scroll would pull the viewport
+        straight back down. PgUp/PgDn move a screen, Up/Down one line. On the
+        alt screen the scrollback is folded away, so the app keeps the key.
         """
         # the cheap tests first: this runs on every keystroke
         if key not in SCROLL_KEYS or not mods or terminal.screen.alternate_buffer_mode:
@@ -206,10 +195,7 @@ class VtermPasteTextCommand(sublime_plugin.TextCommand):
     """Sends arbitrary text to the app, bracketed when it asked for that."""
 
     def run(self, edit, text, bracketed=True):
-        """Args:
-        bracketed: wrap in paste brackets, if the app enabled ?2004. IME
-            text comes through unbracketed — it was typed, not pasted.
-        """
+        """Send text to the app, wrapped in paste brackets when it enabled ?2004"""
         terminal = Terminal.from_id(self.view.id())
         if not terminal:
             return

@@ -24,7 +24,7 @@ def feed(stream, data, char_by_char=False):
 def run_case(char_by_char):
     tag = "char-by-char" if char_by_char else "chunked"
 
-    # DA1 answered (Claude Code's untimed sentinel)
+    # DA1 answered; apps can wait on it with no timeout
     proc, screen, stream = make()
     feed(stream, "\x1b[c", char_by_char)
     assert proc.written == "\x1b[?62;22c", (tag, proc.written)
@@ -34,7 +34,7 @@ def run_case(char_by_char):
     feed(stream, "\x1b[5;10H\x1b[6n\x1b[?6n", char_by_char)
     assert proc.written == "\x1b[5;10R\x1b[?5;10R", (tag, proc.written)
 
-    # XTVERSION then DECRQM 2026 (the Claude Code probe sequence)
+    # XTVERSION then DECRQM 2026, the sync-output probe sequence
     proc, screen, stream = make()
     feed(stream, "\x1b[>0q\x1b[c\x1b[?2026$p\x1b[c", char_by_char)
     assert proc.written == (
@@ -54,8 +54,8 @@ def run_case(char_by_char):
     # and nothing leaked to the screen
     assert screen.buffer[0][0].data == " ", (tag, screen.buffer[0][0])
 
-    # modifyOtherKeys: the level is tracked (pi enables it and reads shift+enter
-    # no other way), and the sequence must not corrupt SGR state
+    # modifyOtherKeys: the level is tracked, and the sequence must not corrupt
+    # SGR state
     proc, screen, stream = make()
     assert screen.modify_other_keys == 0, tag
     feed(stream, "\x1b[>4;2mhello", char_by_char)
@@ -211,8 +211,8 @@ def run_resize_cases():
     feed(stream, "\x1b[?1049l", False)
     assert max(screen.buffer[0]) < 8, sorted(screen.buffer[0])
 
-    # a shrink clamps the cursor (pyte does it via restore_cursor); without
-    # the clamp draw() writes to rows above or below the screen
+    # a shrink clamps the cursor; without the clamp draw() writes to rows
+    # above or below the screen
     proc, screen, stream = make(10, 8)
     feed(stream, "\r\n".join("line{}".format(i) for i in range(8)), False)
     feed(stream, "\x1b[1;1H", False)  # full screen, cursor at home
@@ -239,8 +239,8 @@ def run_resize_cases():
 
 
 def run_private_csi_cases():
-    """No private CSI may raise: an exception here used to kill the renderer
-    thread and freeze the tab. aerc probes XTSMGRAPHICS (ESC[?2;1;0S)."""
+    """No private CSI may raise: an exception here kills the renderer thread
+    and freezes the tab. aerc probes XTSMGRAPHICS (ESC[?2;1;0S)."""
     for final in "ABCDEFGHJKLMPSTXZbcdfghlmnqrstu@":
         proc, screen, stream = make()
         stream.feed("\x1b[?2;1;0" + final)          # multi-parameter private CSI
@@ -269,9 +269,9 @@ def run_private_csi_cases():
 def run_decscnm_cases():
     """A DECSCNM flash (vim's visual bell) must not outlive itself.
 
-    pyte points every line at the blank cell from inside set/reset_mode, so a
-    line kept a reverse default and painted the columns the app never wrote —
-    vim skips indentation with cursor-forward — as white blocks.
+    The lines point at the blank cell, so one keeping a reverse default paints
+    the columns the app never wrote — vim skips indentation with cursor-forward
+    — as white blocks.
     """
     from vterm.render import segment_buffer_line
 
@@ -327,7 +327,7 @@ def run_fast_path_cases():
         return (rows, c.x, c.y, c.attrs, set(screen.mode), screen.title)
 
     def parser_only(blob):
-        """The blob through the coroutine parser alone: pyte's original feed."""
+        """The blob through the coroutine parser alone, bypassing the fast path."""
         proc, screen, stream = make(columns=30, lines=8)
         import pyte
         pyte.Stream.feed(stream, blob)
@@ -407,7 +407,7 @@ def run_clear_cases():
     assert len(screen.history) > 0, "history suppressed for too long"
 
     # ED 3 is app-driven: it clears scrollback and fires the clear callback,
-    # but (as in xterm, unlike pyte) leaves the visible screen alone
+    # but (as in xterm) leaves the visible screen alone
     cleared = []
     proc = FakeProcess()
     screen = VtScreen(10, 4, process=proc, clear_callback=lambda: cleared.append(1))
@@ -418,8 +418,8 @@ def run_clear_cases():
     assert len(screen.history) == 0 and cleared, (len(screen.history), cleared)
     assert screen.buffer[0][0].data == "a", screen.buffer[0][0]
 
-    # with erase_scrollback off, ED 3 is a no-op: agents repaint with it and
-    # would take the history and the view with them
+    # with erase_scrollback off, ED 3 is a no-op: an app repainting with it
+    # would take the history and the view with it
     cleared = []
     proc = FakeProcess()
     screen = VtScreen(10, 4, process=proc, erase_scrollback=False,

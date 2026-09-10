@@ -1,4 +1,4 @@
-""" Terminal emulation: pyte screen and a parser that handles prefixed CSI, DECRQM and multi-digit OSC """
+""" Terminal emulation: the screen and a parser for prefixed CSI, DECRQM and multi-digit OSC """
 import base64
 import logging
 import re
@@ -36,7 +36,7 @@ ANSI_COLORS = [
     "light_white",
 ]
 
-# SGR 90-97 / 100-107: the bright colours, which stock pyte does not map
+# SGR 90-97 / 100-107: the bright (aixterm) colours
 FG_AIXTERM = {90 + i: ANSI_COLORS[8 + i] for i in range(8)}
 BG_AIXTERM = {100 + i: ANSI_COLORS[8 + i] for i in range(8)}
 
@@ -44,7 +44,7 @@ BG_AIXTERM = {100 + i: ANSI_COLORS[8 + i] for i in range(8)}
 REPORTABLE_MODES = (mo.DECAWM >> 5, mo.DECTCEM >> 5, 1000, 1002, 1003, 1004, 1006, 1049, 2004, 2026)
 
 # DEC private modes, pre-shifted into pyte's internal representation.
-# 1: DECCKM, application cursor keys (arrows send SS3); pyte has no name for it
+# 1: DECCKM, application cursor keys (arrows send SS3)
 APP_CURSOR_MODE = 1 << 5
 # 2026: synchronized output, the app is mid-frame and we should not draw
 SYNC_MODE = 2026 << 5
@@ -78,8 +78,8 @@ def _copy_line(line):
 def quantize_256(r, g, b):
     """Nearest xterm-256 index: grays to the ramp, colours to the 6x6x6 cube.
 
-    Truecolor is folded into the 256 palette so the colour-scheme rule table
-    stays bounded (each distinct combo becomes a scheme rule and a file write)."""
+    Truecolor is folded into the palette so the scheme rule table stays bounded:
+    each distinct combo costs a rule and a file write."""
     if r == g == b:
         if r < 8:
             return 16
@@ -102,18 +102,11 @@ Char = namedtuple(
 
 
 class Cursor:
-    """Cursor position and pending attributes.
-
-    Replaces pyte's own so a Char carrying the extra `linefeed` field can be
-    the default attribute set.
-    """
+    """Cursor position and the attributes new text inherits"""
 
     __slots__ = ("x", "y", "attrs", "hidden")
 
     def __init__(self, x, y, attrs=Char(" ")):
-        """Args:
-        attrs: the Char whose styling new text inherits.
-        """
         self.x = x
         self.y = y
         self.attrs = attrs
@@ -121,18 +114,15 @@ class Cursor:
 
 
 class VtScreen(pyte.Screen):
-    """Screen with the terminal features these agents rely on.
-
-    Adds to pyte: the alternate screen, scrollback, synchronized output,
+    """Screen with alternate buffer, scrollback, synchronized output,
     mouse/focus/paste modes, cursor styles, query replies and OSC handling.
+
     Mutated only by the renderer thread, so it carries no lock.
     """
 
     @property
     def default_char(self):
-        """The blank cell an untouched column holds."""
-        # pyte's base property cannot be shadowed by an instance attribute;
-        # the value is maintained on reset and DECSCNM flips
+        """The blank cell an untouched column holds"""
         return self._default_char
 
     def __init__(
@@ -148,14 +138,7 @@ class VtScreen(pyte.Screen):
         bg_color="000000",
         is_dark=True,
     ):
-        """Args:
-        process: written to directly when the app queries the terminal.
-        history: scrollback depth, in lines.
-        erase_scrollback: whether ED 3 drops the scrollback, as a terminal should.
-        clear_callback: the app cleared the screen; the view follows.
-        clipboard_callback: an OSC 52 payload for the system clipboard.
-        fg_color, bg_color, is_dark: palette facts reported back to the app.
-        """
+        """Set up the buffers, the caches and the palette facts reported to the app"""
         self._process = process
         self._erase_scrollback = erase_scrollback
         self._clear_callback = clear_callback
@@ -178,7 +161,7 @@ class VtScreen(pyte.Screen):
         super().__init__(columns, lines)
 
     def reset(self):
-        """RIS: pyte's reset plus our cursor, scrollback and caches."""
+        """RIS: reset the screen along with the cursor, scrollback and caches"""
         self._default_char = Char(data=" ", fg="default", bg="default", reverse=False)
         self._sgr_cache.clear()
         super().reset()
@@ -194,20 +177,12 @@ class VtScreen(pyte.Screen):
         self.cursor_style = style
 
     def set_modify_other_keys(self, resource=0, value=0):
-        """xterm CSI > 4 ; n m: send modified keys as CSI 27 ; mod ; code ~.
-
-        pi turns this on whenever the kitty probe answers with no flags, and
-        reads shift+enter no other way.
-        """
+        """xterm CSI > 4 ; n m: send modified keys as CSI 27 ; mod ; code ~"""
         if resource == 4:
             self.modify_other_keys = value
 
     def resize(self, lines=None, columns=None):
-        """Resize the screen, pushing scrolled-off lines into scrollback.
-
-        Unlike pyte's, shrinking preserves content: rows that no longer fit go
-        to history rather than being dropped.
-        """
+        """Resize the screen; on a shrink the rows that no longer fit go to scrollback"""
         lines = lines or self.lines
         columns = columns or self.columns
 
@@ -239,8 +214,7 @@ class VtScreen(pyte.Screen):
                         line.pop(x, None)
 
         self.lines, self.columns = lines, columns
-        # pyte clamps via restore_cursor; without it a shrink leaves the cursor
-        # negative or past the new edge. x == columns keeps a pending wrap
+        # a shrink can leave the cursor past the new edge; x == columns keeps a pending wrap
         self.cursor.x = min(self.cursor.x, columns)
         self.cursor.y = min(max(self.cursor.y, 0), lines - 1)
         self.set_margins()
@@ -272,9 +246,8 @@ class VtScreen(pyte.Screen):
         if reverse != self._default_char.reverse:
             self._default_char = self._default_char._replace(reverse=reverse)
             self._sgr_cache.clear()
-            # pyte points every line at the old blank cell from inside
-            # set/reset_mode, before this runs; a stale one paints the columns
-            # the app never wrote reverse for good
+            # the lines still point at the old blank cell, which would paint
+            # untouched columns reversed for good
             for line in self.buffer.values():
                 line.default = self._default_char
 
@@ -340,12 +313,11 @@ class VtScreen(pyte.Screen):
         return BRACKETED_PASTE_MODE in self.mode
 
     def draw(self, data):
-        """Write text at the cursor, wcwidth-aware, marking hard wraps.
+        """Write text at the cursor, wcwidth-aware, marking soft wraps.
 
-        Differs from pyte: double-width cells claim two columns, combining marks
-        are merged into the preceding cell as NFC (sublime renders decomposed
-        sequences badly), and an autowrap sets `linefeed` on the last cell so
-        copy can tell a soft wrap from a real newline.
+        Double-width cells claim two columns, combining marks merge into the
+        preceding cell as NFC, and an autowrap sets `linefeed` on the last cell
+        so copy can tell a soft wrap from a real newline.
         """
         if self.charset:
             data = data.translate(self.g1_charset)
@@ -359,8 +331,7 @@ class VtScreen(pyte.Screen):
         cursor = self.cursor
         buffer = self.buffer
         columns = self.columns
-        # cells only differ by their data while attrs are unchanged, so a
-        # per-run cache turns the namedtuple rebuild into a dict lookup
+        # per-run cache: cells differ only by their data while attrs are unchanged
         if cursor.attrs is not self._cache_attrs:
             self._cache_attrs = cursor.attrs
             self._char_cache = {}
@@ -431,10 +402,10 @@ class VtScreen(pyte.Screen):
         super().index()
 
     def erase_in_display(self, how=0, *args, **kwargs):
-        """ED: erase part of the screen, keeping what scrolls away.
+        """ED: erase part of the screen.
 
-        Unlike pyte's, a full clear (or a clear-to-end from home) pushes the
-        current screen into scrollback first, so `clear` does not lose history.
+        A full clear (or a clear-to-end from home) pushes the screen into
+        scrollback first, so `clear` does not lose history.
         """
         if not self.alternate_buffer_mode and (how == 2 or (how == 0 and self.cursor.x == 0 and self.cursor.y == 0)):
             self.push_lines_into_history()
@@ -470,8 +441,8 @@ class VtScreen(pyte.Screen):
     def select_graphic_rendition(self, *attrs, **kwargs):
         """Apply an SGR sequence to the cursor attributes.
 
-        Adds to pyte: bright (aixterm) colours, and truecolor folded into the
-        256 palette. Transitions are memoized — TUIs cycle through a handful of
+        Covers bright (aixterm) colours and truecolor folded into the 256
+        palette. Transitions are memoized: TUIs cycle through a handful of
         sequences thousands of times per frame.
         """
         if not attrs or attrs == (0,):
@@ -575,14 +546,12 @@ class VtScreen(pyte.Screen):
             count = self.first_non_empty_line_from_bottom() + 1
         self.history.extend(_copy_line(self.buffer[y]) for y in range(count))
 
-    # replies go to the pty, never to the screen
-
     def write_process_input(self, data):
-        """Send a reply to the app. Query answers go to the pty, never to the screen."""
+        """Send a query reply to the app: it goes to the pty, never to the screen"""
         self._process.write(data)
 
     def report_device_attributes(self, mode=0, **kwargs):
-        """DA1: claim to be a VT220 with ANSI colour. Claude Code waits on this with no timeout."""
+        """DA1: claim to be a VT220 with ANSI colour"""
         if kwargs.get("private"):
             return
         if mode == 0:
@@ -603,7 +572,7 @@ class VtScreen(pyte.Screen):
             marker = "?" if private else ""
             self.write_process_input("\x1b[{}{};{}R".format(marker, y, x))
         elif mode == 996 and private:
-            # color-scheme report, pi asks with a 2s timeout
+            # color-scheme report
             self.write_process_input(self.theme_report())
 
     def theme_report(self):
@@ -628,7 +597,7 @@ class VtScreen(pyte.Screen):
     def report_kitty_keyboard(self):
         """Answer the kitty keyboard protocol probe."""
         # answering at all means "supported"; 0 flags means none are enabled,
-        # which is what steers pi onto its modifyOtherKeys fallback
+        # which steers an app onto its modifyOtherKeys fallback
         self.write_process_input("\x1b[?0u")
 
     def handle_osc(self, code, payload, terminator):
@@ -656,24 +625,21 @@ class VtScreen(pyte.Screen):
 # a complete plain CSI: params then a final byte. No private marker, prefix or
 # intermediate — those forms, and sequences split across reads, take the parser
 CSI_COMPLETE = re.compile("(?:\x1b\\[|\x9b)([0-9;]*)([@-~])")
-# a read ending mid-CSI; held for the next read, as the parser would hold state.
-# bounded so a run of digits with no final cannot buffer forever
+# a read ending mid-CSI, held for the next read; bounded so a run of digits
+# with no final byte cannot buffer forever
 CSI_PARTIAL = re.compile("(?:\x1b\\[?|\x9b)[0-9;]{0,32}$")
 
 
 class VtStream(pyte.Stream):
-    """pyte.Stream with a parser for prefixed CSI, DECRQM and multi-digit OSC
+    """Stream with a parser for `>`/`<`/`=` prefixed CSI, the DECRQM `$p`
+    intermediate and multi-digit OSC codes.
 
-    Stock pyte drops what these agents rely on: `>`/`<`/`=` prefixed CSI, the
-    DECRQM `$p` intermediate, and OSC codes longer than one digit.
-
-    feed() dispatches complete plain CSI and lone control characters directly:
-    pyte resumes the parser coroutine once per character, which was ~90% of the
-    cost of an escape-heavy flood.
+    feed() dispatches complete plain CSI and lone control characters directly,
+    rather than resuming the parser coroutine once per character.
     """
 
     def __init__(self, *args, **kwargs):
-        """Copy the CSI table before adding to it, so pyte's class-level one is untouched."""
+        """Copy the CSI table before adding to it: the class-level one is shared"""
         self.csi = dict(self.csi)
         self.csi["S"] = "scroll_up"
         self.csi["T"] = "scroll_down"
@@ -683,10 +649,10 @@ class VtStream(pyte.Stream):
         super().__init__(*args, **kwargs)
 
     def attach(self, screen):
-        """Bind the fast dispatch tables when the listener is known."""
+        """Bind the fast dispatch tables once the listener is known"""
         super().attach(screen)
-        # same construction as the parser's create_dispatcher, so an unknown
-        # final lands on listener.debug either way
+        # built like the parser's dispatchers, so an unknown final byte lands
+        # on listener.debug either way
         self._fast_csi = defaultdict(
             lambda: screen.debug,
             {final: getattr(screen, name) for final, name in self.csi.items()},
@@ -696,15 +662,13 @@ class VtStream(pyte.Stream):
         self._fast_basic = {char: getattr(screen, name) for char, name in self.basic.items() if char not in (ctrl.SI, ctrl.SO)}
 
     def feed(self, data):
-        """pyte's feed with a ground-state fast path.
+        """Parse data into the screen, with a ground-state fast path.
 
-        Plain text runs keep pyte's regex path. A complete unprefixed CSI is
-        matched whole and dispatched in one call, and basic controls (CR, LF,
-        tab...) in one lookup, instead of one coroutine resume per character.
-        Everything else — OSC, charsets, private/prefixed CSI, `:` subparams —
-        falls through to the parser, byte for byte as before. A read ending
-        mid-CSI is carried into the next read; the parser would hold it as
-        state, so nothing is dispatched either way until the sequence is whole.
+        A complete unprefixed CSI is dispatched in one call and a lone control
+        character in one lookup; everything else — OSC, charsets,
+        private/prefixed CSI, `:` subparams — falls through to the parser. A
+        read ending mid-CSI is carried into the next one, so nothing dispatches
+        until the sequence is whole.
         """
         # the tail of the previous read ended mid-CSI; complete it first
         if self._carry:
@@ -728,7 +692,7 @@ class VtStream(pyte.Stream):
         offset = 0
         while offset < length:
             if taking_plain_text:
-                # printable run: hand it to draw() whole (pyte's own fast path)
+                # printable run: hand it to draw() whole
                 match = match_text(data, offset)
                 if match:
                     start, offset = match.span()
@@ -739,7 +703,6 @@ class VtStream(pyte.Stream):
                     # complete plain CSI: dispatch here, skipping the parser
                     match = match_csi(data, offset)
                     if match:
-                        # params memo: SGR strings repeat across a whole frame
                         raw = match.group(1)
                         params = cache.get(raw)
                         if params is None:
@@ -750,7 +713,7 @@ class VtStream(pyte.Stream):
                         try:
                             csi[match.group(2)](*params)
                         except TypeError:
-                            # same guard as _dispatch_csi: excess params cost one sequence, not the chunk
+                            # excess params cost one sequence, not the chunk
                             LOG.debug("malformed CSI %s%s", params, match.group(2))
                         offset = match.end()
                         continue
@@ -776,11 +739,9 @@ class VtStream(pyte.Stream):
         self._taking_plain_text = taking_plain_text
 
     def _parser_fsm(self):
-        """Coroutine pyte feeds one character at a time; `yield True` resumes bulk text.
+        """Parser coroutine, fed one character at a time; `yield True` resumes bulk text.
 
-        A full copy of pyte's FSM rather than a hook, because the additions are
-        inside its inner loops. Locals are bound up front: this runs per byte of
-        every escape sequence.
+        Locals are bound up front: this runs per byte of every escape sequence.
         """
         basic = self.basic
         listener = self.listener
@@ -829,7 +790,7 @@ class VtStream(pyte.Stream):
                     elif char == "%":
                         self.select_other_charset((yield None))
                     elif char in "()":
-                        # honoured even in UTF-8 mode, which pyte skips: smacs is ESC(0
+                        # honoured even in UTF-8 mode: xterm-256color's smacs is ESC(0
                         listener.define_charset((yield None), mode=char)
                     else:
                         escape_dispatch[char]()
@@ -873,7 +834,7 @@ class VtStream(pyte.Stream):
                         self._dispatch_csi(csi_dispatch, listener, char, params, private, prefix, intermediate)
                         break
             # OSC: a code of up to 8 digits, then a payload up to MAX_OSC,
-            # ending at BEL or ST. pyte only accepts a single-digit code
+            # ending at BEL or ST
             elif char == OSC_C1:
                 code = ""
                 while True:
@@ -907,8 +868,8 @@ class VtStream(pyte.Stream):
     def _dispatch_csi(self, csi_dispatch, listener, final, params, private, prefix, intermediate):
         """Route a CSI by its intermediate, prefix and private marker.
 
-        The forms pyte has no table for are handled here; a private sequence we
-        do not implement is dropped rather than run in its non-private meaning.
+        An unimplemented private sequence is dropped rather than run in its
+        non-private meaning.
         """
         if intermediate == "$":
             if final == "p":

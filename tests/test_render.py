@@ -226,8 +226,8 @@ assert len(selection) == 1 and selection[0].empty(), \
 print("selection tests passed (user selection survives renders, caret still tracked)")
 
 
-# an app that hides the cursor (pi hides it for good) still needs the caret:
-# sublime drops a space keypress in a view that has no caret at all
+# an app that hides the cursor still needs the caret: sublime drops a space
+# keypress in a view that has no caret at all
 selection.clear()
 stream.feed("\x1b[?25l")
 focus_cursor(terminal.view, None, terminal)
@@ -326,7 +326,7 @@ command.run(None)
 kept = [(r.begin(), r.end()) for r in terminal.view.sel()]
 assert any(b != e for b, e in kept), "user selection was dropped: {}".format(kept)
 
-# pyte's dirty is a repaint hint: rows whose content did not change must not
+# the dirty set is a repaint hint: rows whose content did not change must not
 # be rewritten (each rewrite is a cross-process call and an on_modified)
 rewritten = []
 _replace = terminal.view.replace
@@ -523,8 +523,8 @@ print("view scroll tests passed (a screen or a row per press, clamped to the anc
 
 
 # shift+enter through the whole keypress path: ESC CR by default, and the CSI 27
-# form once the app turned modifyOtherKeys on. pi enables it (its kitty probe
-# gets no flags from us) and reads a bare ESC CR as alt+enter, which submits
+# form once the app turned modifyOtherKeys on, which it reaches for because a
+# bare ESC CR reads as alt+enter
 press(key="enter", shift=True)
 assert terminal.process.written == "\x1b\r", repr(terminal.process.written)
 stream.feed("\x1b[>4;2m")

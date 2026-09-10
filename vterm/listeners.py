@@ -13,7 +13,6 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
     """
 
     def __init__(self):
-        """Track carets per view, for the insert-detection in on_modified."""
         # view id -> last caret position, to work out what sublime just inserted
         self._cursor = {}
 
@@ -56,7 +55,6 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
         raise a key event — it arrives as an `insert` command. Text the emulator
         did not produce must never stay in the view.
         """
-        # printables and IME text arrive as sublime inserts, not keypresses
         terminal = Terminal.from_id(view.id())
         if not terminal:
             return
@@ -86,7 +84,7 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
         self._cursor[view.id()] = view.sel()[0].end()
 
     def on_query_context(self, view, key, operator, operand, match_all):
-        """Answer the contexts the mousemap needs; keymap contexts are native."""
+        """Answer the contexts the mousemap needs"""
         # keymap contexts are native "setting.x"; mousemaps do not evaluate
         # those the same way, so their flags still need the hook
         if key not in ("vterm_view", "vterm_view.wheel_captured"):

@@ -13,16 +13,15 @@ from .terminal import Terminal
 WHEEL_UP = 64
 WHEEL_DOWN = 65
 
-# lines per wheel tick, as iTerm2 delivers per notch; pi scrolls exactly one
-# line per report and has no setting of its own
+# lines per wheel tick, as iTerm2 delivers per notch
 WHEEL_LINES = 3
 
 
 def send_scroll(terminal, up, lines, cell=None):
     """Report `lines` scroll lines to the app, or fake arrow keys on the alt screen.
 
-    One report per line, never one batched write: pi matches the SGR form
-    against a whole stdin chunk and drops anything longer."""
+    One report per write, never a batch: an app may match the SGR form against
+    a whole stdin chunk and drop anything longer."""
     if terminal.screen.mouse_reporting_enabled():
         if cell is None:
             cell = (1, terminal.screen.lines // 2 + 1)
@@ -38,8 +37,8 @@ def send_scroll(terminal, up, lines, cell=None):
 def _event_to_cell(view, terminal, event, clamp=False):
     """Map a mouse event to 1-based (col, row) on the live screen, or None.
 
-    `clamp` pulls a point above or below the screen onto the nearest row: the
-    wheel still belongs to the app, while a click there does not."""
+    Clamping pulls a point above or below the screen onto the nearest row: the
+    wheel still belongs to the app there, a click does not."""
     pt = view.window_to_text((event["x"], event["y"]))
     row, col = view.rowcol(pt)
     row -= terminal.offset

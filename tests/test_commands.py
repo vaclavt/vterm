@@ -83,7 +83,7 @@ assert terminal.screen.theme_is_dark is True
 # without mode 2031 the app is not interrupted
 assert recorder.written == "", repr(recorder.written)
 
-# with it, the dark/light report is sent so the agent can restyle itself
+# with it, the dark/light report is sent so the app can restyle itself
 stream.feed("\x1b[?2031h")
 recorder.written = ""
 terminal.apply_scheme()

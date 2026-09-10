@@ -107,25 +107,18 @@ def _modifier_code(ctrl, alt, shift):
 
 def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False, new_line_mode=False,
                  modify_other_keys=0):
-    """Escape sequence for a key name and its modifiers.
-
-    Args:
-        key: key name from the keymap, or a single literal character.
-        application_mode: DECCKM is set, so cursor keys take their SS3 form.
-        new_line_mode: LNM is set, so enter sends CR LF.
-        modify_other_keys: the level the app asked for with CSI > 4 ; n m.
-
-    Returns:
-        str: the bytes to write to the pty.
-    """
+    """Escape sequence for a key name and its modifiers, honouring the app's active modes"""
     key_lo = key.lower() if len(key) > 1 else key
 
+    # the keys with an xterm modified form of their own
     if (ctrl or alt or shift) and key_lo in _MODIFIABLE_CSI:
         return _MODIFIABLE_CSI[key_lo].format(_modifier_code(ctrl, alt, shift))
 
+    # the ambiguous ones, while the app asked for CSI 27
     if modify_other_keys and (ctrl or alt or shift) and key_lo in _OTHER_KEYS:
         return "\x1b[27;{};{}~".format(_modifier_code(ctrl, alt, shift), _OTHER_KEYS[key_lo])
 
+    # ctrl folds to a control byte, alt prefixes ESC, shift is bare text
     if ctrl:
         base = key_lo
         if base in _CTRL_KEY_MAP:

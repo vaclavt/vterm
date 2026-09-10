@@ -54,8 +54,8 @@ for char in string.ascii_letters + string.digits + string.punctuation:
 assert get_key_code(key="space") == " ", "space must send a space"
 
 # legacy encodings by default; while the app has modifyOtherKeys on, the keys
-# whose modified form is ambiguous take the CSI 27 form instead. pi reads a
-# bare ESC CR as alt+enter and submits on it
+# whose modified form is ambiguous take the CSI 27 form instead. a bare ESC CR
+# reads as alt+enter
 assert get_key_code(key="enter", shift=True) == "\x1b\r"
 assert get_key_code(key="enter", shift=True, modify_other_keys=2) == "\x1b[27;2;13~"
 assert get_key_code(key="space", ctrl=True, modify_other_keys=2) == "\x1b[27;5;32~"
