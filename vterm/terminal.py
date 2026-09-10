@@ -30,6 +30,9 @@ FEED_LIMIT = 256 * 1024
 # SUPPRESS_HISTORY_AFTER_CLEAR in emulator.py must outlast this
 REPAINT_NUDGE_DELAY = 0.25
 
+# extra wait once a tick finds nothing pending, on top of RENDER_PERIOD.
+IDLE_TICK = 0.2
+
 
 def view_size(view, default=None):
     """Terminal (rows, columns) that fit the view's viewport."""
@@ -116,6 +119,12 @@ class Terminal:
         self.pending_render = False
         # a UTF-8 sequence split across read chunks must not be dropped
         self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        # set by the reader (and the UI thread) to end the renderer's idle park
+        self._wake = threading.Event()
+
+    def wake(self):
+        """Cut short the renderer's idle wait, for a flag set from another thread"""
+        self._wake.set()
 
     @classmethod
     def from_id(cls, vid):
@@ -203,6 +212,7 @@ class Terminal:
         """Terminate the child and drop this terminal from the registry."""
         LOG.debug("[kill] terminating process")
         self.alive = False
+        self._wake.set()
         scheme_manager.remove_listener(self.apply_scheme)
         try:
             self.process.terminate()
@@ -254,11 +264,13 @@ class Terminal:
                 except EOFError:
                     break
                 chunks.append(self._decoder.decode(raw))
+                self._wake.set()
                 if done[0] or not self.is_hosted():
                     LOG.debug("[reader] stops")
                     break
             self.alive = False
             done[0] = True
+            self._wake.set()
 
         def feed_data():
             """Parse up to FEED_LIMIT of pending output into the screen."""
@@ -280,9 +292,10 @@ class Terminal:
             """Own the emulator: parse, then ask sublime to redraw, once per tick."""
             while True:
                 # a hidden tab is not drawn at all: the screen keeps the state
-                # and one render on unhide catches the view up. The tick stays at
-                # full rate either way, or the parser would fall behind the pty
+                # and one render on unhide catches the view up.
                 visible = self.is_visible()
+
+                self._wake.clear()
                 with intermission(period=RENDER_PERIOD):
                     feed_data()
                     if self.screen.in_sync_frame():
@@ -299,6 +312,16 @@ class Terminal:
                     if done[0] or not self.is_hosted():
                         LOG.debug("[renderer] stops")
                         break
+
+                # nothing left to do: park until woken, instead of spinning at
+                # RENDER_PERIOD. A sync frame or a teardown skipped this by
+                # leaving the block above, and keeps its own cadence.
+                # dirty rows only count while visible: nothing clears them for a
+                # hidden tab, and on_activated wakes us with pending_render
+                if not (
+                    chunks or self.pending_render or self.pending_clear or self.pending_clear_screen or (visible and self.screen.dirty)
+                ):
+                    self._wake.wait(IDLE_TICK)
 
             while chunks:
                 feed_data()

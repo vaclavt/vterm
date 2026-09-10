@@ -27,6 +27,7 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
             # background — via the renderer tick: a render here would race the
             # renderer thread, which owns the emulator
             terminal.pending_render = True
+            terminal.wake()
             view.run_command("vterm_show_cursor", {"scroll": False})
         elif view.settings().get("vterm_view") and not view.settings().get("vterm_view.finished"):
             # the plugin host restarted; this tab's terminal is unreachable

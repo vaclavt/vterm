@@ -264,6 +264,7 @@ class VtermClearScreenCommand(sublime_plugin.TextCommand):
             return
         # the renderer thread owns the screen; it applies this on its next tick
         terminal.pending_clear_screen = True
+        terminal.wake()
         self.view.run_command("vterm_clear_undo_stack")
 
     def is_enabled(self):
