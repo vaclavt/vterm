@@ -410,9 +410,16 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
         Without this the view keeps a full screen of blank rows below a short
         prompt, and the scrollbar reflects them.
+
+        Both are skipped on the alternate screen, where the app owns every row:
+        one that blanks and refills - vim's showcmd corner, on every keypress -
+        would resize the view under a viewport pinned to its bottom, and the
+        whole screen shifts by the part of a row the viewport leaves over.
         """
         view = self.view
         screen = terminal.screen
+        if screen.alternate_buffer_mode:
+            return
         cursor = screen.cursor
         cursor_row = terminal.offset + cursor.y
         lastrow = view.rowcol(view.size())[0]

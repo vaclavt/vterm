@@ -105,8 +105,7 @@ def _modifier_code(ctrl, alt, shift):
     return 1 + (1 if shift else 0) + (2 if alt else 0) + (4 if ctrl else 0)
 
 
-def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False, new_line_mode=False,
-                 modify_other_keys=0):
+def get_key_code(key, ctrl=False, alt=False, shift=False, application_mode=False, new_line_mode=False, modify_other_keys=0):
     """Escape sequence for a key name and its modifiers, honouring the app's active modes"""
     key_lo = key.lower() if len(key) > 1 else key
 

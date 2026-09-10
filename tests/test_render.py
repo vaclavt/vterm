@@ -202,6 +202,24 @@ command.trim_history(None, terminal)
 assert "row 0" in terminal.view.text and "row 7" in terminal.view.text, \
     terminal.view.text
 
+# nor may its blank rows be trimmed: an app that blanks and refills its last
+# row (vim's showcmd corner) would resize the view under a pinned viewport
+terminal, stream = make_terminal(rows=4)
+stream.feed("\x1b[?1049h")
+terminal.view = FakeView("top\nrow\n\n")
+command = make_command(terminal.view)
+before = terminal.view.text
+command.trim_trailing_spaces(None, terminal)
+assert terminal.view.text == before, \
+    "alt screen blank tail was trimmed: {!r}".format(terminal.view.text)
+
+# on the primary screen the blank tail below the cursor still goes
+terminal, stream = make_terminal(rows=4)
+terminal.view = FakeView("top\nrow\n\n")
+command = make_command(terminal.view)
+command.trim_trailing_spaces(None, terminal)
+assert terminal.view.text == "top\nrow", terminal.view.text
+
 print("render tests passed (alt screen keeps its view, cap honoured)")
 
 
