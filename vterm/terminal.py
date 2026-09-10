@@ -33,6 +33,11 @@ REPAINT_NUDGE_DELAY = 0.25
 # extra wait once a tick finds nothing pending, on top of RENDER_PERIOD.
 IDLE_TICK = 0.2
 
+# pause before the first frame after an idle park, so the writes of one app
+# update land together: vim splits every keypress into two writes a fraction of
+# a millisecond apart, and drawing between them flashes its showcmd echo
+SETTLE = 0.005
+
 
 def view_size(view, default=None):
     """Terminal (rows, columns) that fit the view's viewport."""
@@ -321,7 +326,8 @@ class Terminal:
                 if not (
                     chunks or self.pending_render or self.pending_clear or self.pending_clear_screen or (visible and self.screen.dirty)
                 ):
-                    self._wake.wait(IDLE_TICK)
+                    if self._wake.wait(IDLE_TICK):
+                        time.sleep(SETTLE)
 
             while chunks:
                 feed_data()

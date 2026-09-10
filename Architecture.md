@@ -123,6 +123,9 @@ child writes
    │   chunks.append(text)         collections.deque, no lock
    │
    ├─ renderer thread, every 30 ms (RENDER_PERIOD) ───────────────
+   │   _wake.wait(IDLE_TICK)       idle: park until the reader has output,
+   │                               then SETTLE, so the writes of one app
+   │                               update are drawn as a single frame
    │   feed_data()                 popleft up to FEED_LIMIT (256 KiB)
    │   stream.feed(joined)         → VtStream parser → VtScreen.draw
    │                                 mutates buffer, fills screen.dirty
