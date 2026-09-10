@@ -18,6 +18,7 @@ from .vterm.commands import (
     VtermOpenCommand,
     VtermOpenTerminalProjectFolderCommand,
     VtermPasteCommand,
+    VtermPasteSelectionCommand,
     VtermPasteTextCommand,
     VtermSelectThemeCommand,
 )

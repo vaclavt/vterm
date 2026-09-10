@@ -178,21 +178,20 @@ class VtermKeypressCommand(sublime_plugin.TextCommand):
         return True
 
 
+def selection_text(view):
+    """The view's selection as one string, with soft-wrapped rows re-joined."""
+    text = "\n".join(view.substr(s) for s in view.sel())
+    return text.replace(CONTINUATION + "\n", "").replace(CONTINUATION, "")
+
+
 class VtermCopyCommand(sublime_plugin.TextCommand):
     """Copies the selection, re-joining rows the emulator soft-wrapped."""
 
     def run(self, edit):
         """Strip the soft-wrap sentinels, then copy as usual."""
-        view = self.view
-        if not view.settings().get("vterm_view"):
+        if not self.view.settings().get("vterm_view"):
             return
-        text = "\n".join(view.substr(s) for s in view.sel())
-
-        # re-join soft-wrapped lines
-        text = text.replace(CONTINUATION + "\n", "")
-        text = text.replace(CONTINUATION, "")
-
-        sublime.set_clipboard(text)
+        sublime.set_clipboard(selection_text(self.view))
 
 
 class VtermPasteCommand(sublime_plugin.TextCommand):
@@ -224,6 +223,19 @@ class VtermPasteTextCommand(sublime_plugin.TextCommand):
 
         if bracketed:
             terminal.send_key(key="bracketed_paste_end")
+
+
+class VtermPasteSelectionCommand(sublime_plugin.TextCommand):
+    """Sends the view's own selection to the app; the middle button, X11-style."""
+
+    def run(self, edit):
+        """Bracketed like any paste, and the clipboard is never touched."""
+        text = selection_text(self.view)
+        if not text:
+            return
+        # as typing does, so the caret follows the terminal cursor again
+        self.view.sel().clear()
+        self.view.run_command("vterm_paste_text", {"text": text})
 
 
 class VtermSelectThemeCommand(sublime_plugin.WindowCommand):

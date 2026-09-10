@@ -10,5 +10,12 @@
         "command": "vterm_scroll",
         "args": {"up": false},
         "context": [{"key": "vterm_view.wheel_captured", "operand": true}]
+    },
+    {
+        // press_command: sublime's own button3 binding is a column drag_select,
+        // which would clear the selection before a release command could read it
+        "button": "button3",
+        "press_command": "vterm_paste_selection",
+        "context": [{"key": "vterm_view", "operand": true}]
     }
 ]

@@ -46,7 +46,7 @@ Constraints it works under:
 | `vterm.sublime-commands` | Four palette entries: open, open terminal in project folder, clear screen, select theme. |
 | `vterm.sublime-syntax` | An intentionally empty hidden syntax, so terminal text is never tokenized. |
 | `Default.sublime-keymap` | 245 generated bindings. **Do not edit by hand** — regenerate with `tools/gen_keymap.py`. |
-| `Default (OSX).sublime-mousemap` | Two wheel bindings. |
+| `Default (OSX).sublime-mousemap` | Two wheel bindings and the middle button. |
 | `dependencies.json` | Package Control libraries. |
 
 Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-scheme`.
@@ -89,6 +89,7 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
 | `vterm_render` | `VtermRenderCommand` | renderer thread |
 | `vterm_show_cursor` | `VtermShowCursorCommand` | internal |
 | `vterm_copy` / `vterm_paste` / `vterm_paste_text` | `commands.py` | `on_text_command`, IME capture |
+| `vterm_paste_selection` | `commands.py` | mousemap, middle button |
 | `vterm_select_theme` | `VtermSelectThemeCommand` | palette |
 | `vterm_clear_screen` | `VtermClearScreenCommand` | palette, `super+shift+k` |
 | `vterm_cleanup` | `VtermCleanupCommand` | renderer, on process exit |
@@ -311,6 +312,14 @@ Clicks: `VtermMouseEventListener` intercepts `drag_select` only when the app tra
 mouse, and only the plain single-button form, so shift-click and add-selection stay
 native. The first click on an unfocused tab only focuses it — we replaced the command
 that normally does that — and subsequent clicks send a press/release pair.
+
+**The middle button** pastes the view's own selection into the app, as X11 does, and
+never touches the clipboard. The binding is a `press_command`, not a `command`: Sublime's
+own `button3` on macOS is a column `drag_select`, which would clear the selection on
+press before a release command could read it. Shadowing it costs middle-drag column
+select inside terminal tabs; the context makes the binding fall through everywhere else.
+It is not gated on mouse reporting — an empty selection is already a no-op, and the alt
+screen rarely holds one.
 
 ### Lifecycle
 

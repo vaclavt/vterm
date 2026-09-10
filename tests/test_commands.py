@@ -1,10 +1,11 @@
-""" Theme picker flows: preview, cancel, confirm.
+""" Theme picker flows and the selection-to-text helper.
 Run with: python3 tests/test_commands.py """
 import _bootstrap  # sets sys.path for the imports below
 from _bootstrap import FakeProcess
 
 import sublime
-from vterm.commands import VtermSelectThemeCommand
+from vterm.commands import VtermPasteSelectionCommand, VtermSelectThemeCommand, selection_text
+from vterm.render import CONTINUATION
 from vterm.utils import SETTINGS_FILE
 from vterm.themes import THEMES
 
@@ -124,3 +125,59 @@ assert len(scheme_manager.rules) == first, \
     "rules duplicated: {} -> {}".format(first, len(scheme_manager.rules))
 
 print("scheme file tests passed ({} seeded rules, idempotent)".format(first))
+
+
+class FakeView:
+    """Just enough view for selection_text and the paste-selection command."""
+
+    def __init__(self, text, regions):
+        self.text = text
+        self.regions = list(regions)
+        self.commands = []
+
+    def substr(self, region):
+        return self.text[region.begin():region.end()]
+
+    def sel(self):
+        return self
+
+    def __iter__(self):
+        return iter(self.regions)
+
+    def clear(self):
+        self.regions = []
+
+    def run_command(self, name, args=None):
+        self.commands.append((name, args))
+
+
+def paste(view):
+    command = VtermPasteSelectionCommand.__new__(VtermPasteSelectionCommand)
+    command.view = view
+    command.run(None)
+    return view.commands
+
+
+# soft-wrapped rows re-join: the sentinel and the newline behind it both go
+wrapped = "abc" + CONTINUATION + "\ndef"
+view = FakeView(wrapped, [sublime.Region(0, len(wrapped))])
+assert selection_text(view) == "abcdef", repr(selection_text(view))
+
+# a trailing sentinel with no newline is still stripped
+view = FakeView("abc" + CONTINUATION, [sublime.Region(0, 3 + len(CONTINUATION))])
+assert selection_text(view) == "abc", repr(selection_text(view))
+
+# multiple regions join with a newline
+view = FakeView("abcdef", [sublime.Region(0, 3), sublime.Region(3, 6)])
+assert selection_text(view) == "abc\ndef", repr(selection_text(view))
+
+# the middle button pastes the selection and drops it, so the caret follows again
+view = FakeView("abcdef", [sublime.Region(0, 3)])
+assert paste(view) == [("vterm_paste_text", {"text": "abc"})], view.commands
+assert list(view.sel()) == [], "selection must be cleared"
+
+# nothing selected, nothing sent
+view = FakeView("abcdef", [sublime.Region(2, 2)])
+assert paste(view) == [], view.commands
+
+print("selection tests passed (sentinel stripping, paste, empty no-op)")

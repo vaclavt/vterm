@@ -1,5 +1,4 @@
-""" Event listeners: printable/IME input capture, command rerouting,
-keymap context, focus reporting, lifecycle """
+""" Event listeners: printable/IME input capture, command rerouting, keymap context, focus reporting, lifecycle """
 import sublime
 import sublime_plugin
 
@@ -87,10 +86,10 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
         self._cursor[view.id()] = view.sel()[0].end()
 
     def on_query_context(self, view, key, operator, operand, match_all):
-        """Answer the one context the mousemap needs; keymap contexts are native."""
+        """Answer the contexts the mousemap needs; keymap contexts are native."""
         # keymap contexts are native "setting.x"; mousemaps do not evaluate
-        # those the same way, so the wheel flag still needs the hook
-        if key != "vterm_view.wheel_captured":
+        # those the same way, so their flags still need the hook
+        if key not in ("vterm_view", "vterm_view.wheel_captured"):
             return None
         value = view.settings().get(key, False)
         if operator == sublime.OP_EQUAL:

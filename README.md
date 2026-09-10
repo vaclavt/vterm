@@ -48,6 +48,8 @@ the view over the scrollback and Shift+Up/Down move it one line, instead of
 reaching the app, as xterm and kitty do — `scroll_modifier` moves that to Ctrl,
 or turns it off. Copy/paste use the normal Sublime keys, and pastes are
 bracketed when the app asks for it. Copying re-joins soft-wrapped lines. The
+middle button pastes the current selection straight into the app, X11-style,
+without going near the clipboard; it does nothing when nothing is selected. The
 wheel scrolls the view normally; while the app tracks the mouse the wheel and
 left click go to it instead, and on the alternate screen without tracking each
 wheel tick sends arrow keys (alternate scroll, as kitty/iTerm2 do — this is
@@ -122,7 +124,8 @@ terminal protocols — see `Architecture.md`.
 
 Supported: alt screen (1049), synchronized output (2026), bracketed paste (2004),
 mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left click are reported; no
-drag, no right or middle button), focus events (1004),
+drag, no right button; the middle button pastes the selection instead of being
+reported), focus events (1004),
 xterm modifyOtherKeys (`CSI > 4 ; n m`, for the modified keys with no
 unambiguous legacy encoding: enter, tab, backspace, space), cursor styles (DECSCUSR —
 block/bar and blink/steady via the view's caret settings; underline falls back
