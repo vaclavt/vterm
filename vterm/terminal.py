@@ -38,6 +38,10 @@ IDLE_TICK = 0.2
 # a millisecond apart, and drawing between them flashes its showcmd echo
 SETTLE = 0.005
 
+# frames between undo-stack clears: every render edit lands on the view's undo
+# stack, which only focus changes clear otherwise, and undo is swallowed anyway
+UNDO_CLEAR_FRAMES = 100
+
 
 def view_size(view, default=None):
     """Terminal (rows, columns) that fit the view's viewport."""
@@ -295,6 +299,7 @@ class Terminal:
 
         def renderer():
             """Own the emulator: parse, then ask sublime to redraw, once per tick."""
+            frames = 0
             while True:
                 # a hidden tab is not drawn at all: the screen keeps the state
                 # and one render on unhide catches the view up.
@@ -313,6 +318,10 @@ class Terminal:
                         # due first: _need_to_render consumes the cursor move it reports
                         if self.is_render_due() and self._need_to_render():
                             self.view.run_command("vterm_render")
+                            frames += 1
+                            if frames >= UNDO_CLEAR_FRAMES:
+                                frames = 0
+                                self.view.run_command("vterm_clear_undo_stack")
                     self._sync_wheel_flag()
                     if done[0] or not self.is_hosted():
                         LOG.debug("[renderer] stops")
