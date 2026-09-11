@@ -167,6 +167,8 @@ python3 tests/test_render.py     # render layer on a fake view: trimming, select
 python3 tests/test_commands.py   # theme picker, live restyle, generated scheme
 python3 tests/harness_live.py CMD SECONDS [--send TEXT]   # run a real app in the emulator, dump the screen
 python3 tools/gen_keymap.py      # regenerate Default.sublime-keymap
+python3 benchmarks/bench_vs_terminus.py   # render cost per frame, against Terminus on the same input
+python3 benchmarks/profiling.py           # feed-path hotspots, per-char micro-benches of draw
 ```
 
 `harness_live.py` is the useful one: it drives a real `pi` or `claude` through the
