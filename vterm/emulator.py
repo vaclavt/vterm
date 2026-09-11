@@ -93,6 +93,9 @@ def quantize_256(r, g, b):
     return 16 + 36 * level(r) + 6 * level(g) + level(b)
 
 
+# a run of these is width-1 cells only: no wcwidth, no wide/combining cases
+PLAIN_RUN = re.compile("[ -~]+")
+
 # linefeed marks an autowrap (soft wrap), so copy can re-join the halves
 Char = namedtuple(
     "Char",
@@ -347,6 +350,36 @@ class VtScreen(pyte.Screen):
                 cache = self._char_caches[attrs] = {}
             self._char_cache = cache
         cache = self._char_cache
+
+        if autowrap and not insert_mode and PLAIN_RUN.fullmatch(data):
+            # every cell is width 1, so wraps are pure arithmetic: fill whole
+            # rows with C-speed dict.update instead of looping per char
+            for c in set(data):
+                if c not in cache:
+                    cache[c] = attrs._replace(data=c)
+            get = cache.__getitem__
+            dirty = self.dirty
+            pos = 0
+            length = len(data)
+            while pos < length:
+                x = cursor.x
+                if x == columns:
+                    line = buffer[cursor.y]
+                    last = line[columns - 1]
+                    line[columns - 1] = last._replace(linefeed=True)
+                    dirty.add(cursor.y)
+                    self.carriage_return()
+                    self.linefeed()
+                    x = 0
+                line = buffer[cursor.y]
+                take = min(columns - x, length - pos)
+                end = pos + take
+                line.update(zip(range(x, x + take), map(get, data[pos:end])))
+                dirty.add(cursor.y)
+                cursor.x = x + take
+                pos = end
+            return
+
         line = buffer[cursor.y]
 
         for char in data:
