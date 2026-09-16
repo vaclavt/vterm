@@ -362,9 +362,11 @@ replaces both together.
 
 **Plugin settings** (`vterm.sublime-settings`, read through the cached `settings()`
 handle): `auto_close`, `scrollback_history_size`, `honor_erase_scrollback`,
-`scroll_modifier`, `min_columns`, `max_columns`, `theme`, `ansi_colors`, `terminal`,
+`scroll_modifier`, `wheel_lines`, `min_columns`, `max_columns`, `theme`, `ansi_colors`, `terminal`,
 `parameters`, `debug`. `scroll_modifier` is the modifier that turns PgUp/PgDn and Up/Down
-into a scroll of the view — a page, a row — instead of a key for the app. `terminal` and
+into a scroll of the view — a page, a row — instead of a key for the app. `wheel_lines`
+is how many scroll lines one wheel notch sends the app (3, as iTerm2 delivers per notch;
+a trackpad converted to notches scrolls that much faster, so lower it). `terminal` and
 `parameters` name the external terminal spawned by *vterm: Open Terminal in Project
 Folder* (`%CWD%` in `parameters` becomes the project folder). ED 3 never touches the visible screen (as in
 xterm), and `honor_erase_scrollback` is off, so it does not drop the scrollback either:

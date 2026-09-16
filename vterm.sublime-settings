@@ -15,6 +15,10 @@
     // null sends the keys to the app
     "scroll_modifier": "shift",
 
+    // scroll lines sent to the app per wheel notch (iTerm2 sends 3).
+    // A trackpad via LinearMouse makes many notches per swipe; 1 is calmer.
+    "wheel_lines": 1,
+
     "min_columns": 20,
     "max_columns": 500,
 

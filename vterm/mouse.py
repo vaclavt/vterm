@@ -8,13 +8,11 @@ notches and take the path below.
 import sublime_plugin
 
 from .terminal import Terminal
+from .utils import settings
 
 # SGR button numbers for the wheel; 64 is the "scroll" bit plus direction
 WHEEL_UP = 64
 WHEEL_DOWN = 65
-
-# lines per wheel tick, as iTerm2 delivers per notch
-WHEEL_LINES = 3
 
 
 def send_scroll(terminal, up, lines, cell=None):
@@ -105,7 +103,8 @@ class VtermScrollCommand(sublime_plugin.TextCommand):
         cell = None
         if terminal.screen.mouse_reporting_enabled() and event:
             cell = _event_to_cell(self.view, terminal, event, clamp=True)
-        send_scroll(terminal, up, WHEEL_LINES, cell)
+        lines = max(0, int(settings().get("wheel_lines", 3)))
+        send_scroll(terminal, up, lines, cell)
 
     def want_event(self):
         """Ask sublime for the wheel coordinates."""

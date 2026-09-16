@@ -56,7 +56,9 @@ wheel tick sends arrow keys (alternate scroll, as kitty/iTerm2 do — this is
 what scrolls Claude Code's fullscreen UI before it enables mouse reporting).
 Sublime raises no wheel event at all for the trackpad (sublime_text#1838): set
 a utility such as [LinearMouse](https://linearmouse.app/) to discrete scrolling
-for Sublime Text and it arrives as wheel notches like any other. While an app owns the
+for Sublime Text and it arrives as wheel notches like any other. A notch sends the
+app three scroll lines, as iTerm2 does; `wheel_lines` lowers that when a swipe
+scrolls too far. While an app owns the
 alternate screen the scrollback above it is folded away, kitty-style, and
 unfolds when the app leaves it.
 
@@ -154,7 +156,8 @@ instead), image protocols, Windows, panels.
 - Trackpad scrolling needs a helper on macOS: Sublime never delivers it to a
   plugin (sublime_text#1838), so set a utility such as
   [LinearMouse](https://linearmouse.app/) to discrete/linear scrolling for
-  Sublime Text. It then arrives as wheel notches and scrolls the app. Without
+  Sublime Text. It then arrives as wheel notches and scrolls the app, three
+  lines a notch unless `wheel_lines` says otherwise. Without
   one, the trackpad does nothing in a full-screen app; the mouse wheel,
   `shift+pageup/pagedown` and `shift+up/down` work regardless.
 
