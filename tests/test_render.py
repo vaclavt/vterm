@@ -125,7 +125,9 @@ class FakeView:
         return self.viewport
 
     def set_viewport_position(self, xy, animate=True):
-        self.viewport = xy
+        # scroll_past_end is off, so sublime clamps to the layout
+        maxy = max(0, self.layout_extent()[1] - self.viewport_extent()[1])
+        self.viewport = (xy[0], max(0, min(xy[1], maxy)))
 
     def line_height(self):
         return LINE_HEIGHT
@@ -538,6 +540,23 @@ assert terminal.process.written == "\x1b[6;5~", repr(terminal.process.written)
 plugin_settings.set("scroll_modifier", "shift")
 
 print("view scroll tests passed (a screen or a row per press, clamped to the anchor, configurable modifier)")
+
+
+# an app that repaints its block shorter than the screen (pi on every SIGWINCH)
+# leaves the live screen shorter than the viewport once the blank tail is
+# trimmed. the anchor must stay where sublime can actually put the viewport, or
+# the follow gate closes for good and the output is never followed again
+short, _ = make_terminal(rows=8, cols=20)
+short.view.viewport_rows = short.screen.lines
+# 24 scrollback rows, then a live screen holding 3 rows instead of 8
+short.view.text = "\n".join("row {}".format(i) for i in range(27))
+short.offset = 24
+scroll_to_cursor(short.view, short)
+assert short.viewport_y == short.view.viewport_position()[1], \
+    (short.viewport_y, short.view.viewport_position()[1])
+assert following(short.view, short), "follow gate latched shut on a short screen"
+
+print("short screen tests passed (the anchor stays reachable, so the view keeps following)")
 
 
 # shift+enter through the whole keypress path: ESC CR by default, and the CSI 27

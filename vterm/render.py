@@ -520,11 +520,10 @@ def following(view, terminal):
 
 
 def bottom_y(view, terminal):
-    """Viewport y that pins the bottom of the live screen to the bottom of the view."""
+    """Viewport y that pins the bottom of the view to the bottom of the viewport."""
+
     # layout_extent is maintained incrementally, unlike text_to_layout(size())
-    viewport_y = view.layout_extent()[1] - view.viewport_extent()[1]
-    offset_y = view.text_to_layout(view.text_point(terminal.offset, 0))[1]
-    return max(offset_y, viewport_y)
+    return max(0, view.layout_extent()[1] - view.viewport_extent()[1])
 
 
 def scroll_to_cursor(view, terminal):
