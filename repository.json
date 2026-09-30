@@ -1,0 +1,21 @@
+{
+    "$schema": "sublime://packagecontrol.io/schemas/repository",
+    "schema_version": "4.0.0",
+    "packages": [
+        {
+            "name": "vterm",
+            "details": "https://github.com/vaclavt/vterm",
+            "description": "Minimalist terminal for Sublime Text 4, built to run TUI coding agents (pi, claude) in a tab",
+            "author": "vaclavt",
+            "labels": ["terminal", "shell", "pty"],
+            "releases": [
+                {
+                    "sublime_text": ">=4149",
+                    "platforms": ["osx"],
+                    "python_versions": ["3.8"],
+                    "tags": true
+                }
+            ]
+        }
+    ]
+}

@@ -9,17 +9,42 @@ Requires Sublime Text 4 with the Python 3.8 plugin host (build 4149+, for
 
 ## Install
 
-Symlink this folder into Sublime packages as `vterm`:
+### With Package Control
 
-```sh
-ln -s /Users/vaclavt/devel/vt/vterm "$HOME/Library/Application Support/Sublime Text/Packages/vterm"
+vterm is not on the default channel, so add its repository first. Open
+**Preferences → Package Settings → Package Control → Settings** and put the URL
+below in the `repositories` array of the right-hand (User) pane:
+
+```json
+{
+    "repositories": [
+        "https://raw.githubusercontent.com/vaclavt/vterm/main/repository.json"
+    ]
+}
 ```
 
-Dependencies (pyte, ptyprocess, wcwidth) are Package Control libraries declared
-in `dependencies.json`. If they are not yet in `Lib/python38` (e.g. Terminus was
-never installed), run **Package Control: Satisfy Libraries** and restart Sublime.
-Package Control garbage-collects libraries no package requires, so if imports
-ever fail after uninstalling another package, re-run *Satisfy Libraries*.
+Then run **Package Control: Install Package** from the Command Palette and pick
+**vterm**. Upgrades arrive through **Package Control: Upgrade Package** like any
+other package.
+
+### From source
+
+Clone the repository into the Sublime Text `Packages` directory as `vterm`:
+
+```sh
+git clone https://github.com/vaclavt/vterm.git \
+  "$HOME/Library/Application Support/Sublime Text/Packages/vterm"
+```
+
+Use one method or the other, not both: an unpacked `Packages/vterm` directory
+overrides the `vterm.sublime-package` that Package Control installs.
+
+Either way, dependencies (pyte, ptyprocess, wcwidth) are Package Control
+libraries declared in `dependencies.json`. If they are not yet in
+`Lib/python38` (e.g. Terminus was never installed), run **Package Control:
+Satisfy Libraries** and restart Sublime. Package Control garbage-collects
+libraries no package requires, so if imports ever fail after uninstalling
+another package, re-run *Satisfy Libraries*.
 
 ## Use
 
