@@ -11,21 +11,25 @@ Requires Sublime Text 4 with the Python 3.8 plugin host (build 4149+, for
 
 ### With Package Control
 
-vterm is not on the default channel, so add its repository first. Open
-**Preferences → Package Settings → Package Control → Settings** and put the URL
-below in the `repositories` array of the right-hand (User) pane:
+vterm is distributed through the shared channel at
+[vaclavt/sublime-chanel](https://github.com/vaclavt/sublime-chanel), not the
+default one. Open **Preferences → Package Settings → Package Control →
+Settings** and put the channel URL in the `channels` array of the right-hand
+(User) pane:
 
 ```json
 {
-    "repositories": [
-        "https://raw.githubusercontent.com/vaclavt/vterm/main/repository.json"
+    "channels": [
+        "https://packagecontrol.io/channel_v3.json",
+        "https://raw.githubusercontent.com/vaclavt/sublime-chanel/main/channel.json"
     ]
 }
 ```
 
-Then run **Package Control: Install Package** from the Command Palette and pick
-**vterm**. Upgrades arrive through **Package Control: Upgrade Package** like any
-other package.
+Keep `https://packagecontrol.io/channel_v3.json` in the list — dropping it
+hides every default package. Then run **Package Control: Install Package**
+from the Command Palette and pick **vterm**. Upgrades arrive through
+**Package Control: Upgrade Package** like any other package.
 
 ### From source
 
