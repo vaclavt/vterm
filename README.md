@@ -104,7 +104,7 @@ commented out beside it), `debug` (verbose logging to the ST console), plus the
 colours:
 
 - `theme` — `"default"` (Terminal.app Basic, light), `"homebrew"`, `"pro"`,
-  `"slate"`, or `null` to follow the active Sublime colour scheme. Set it with
+  `"slate"`, `"red-alert"`, or `null` to follow the active Sublime colour scheme. Set it with
   *vterm: Select Theme* or by hand; either way open terminals restyle in place,
   no restart needed.
 - `ansi_colors` — override individual base colours, e.g. `{"red": "#ff0000"}`,
