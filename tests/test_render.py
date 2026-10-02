@@ -17,6 +17,7 @@ from vterm.render import (
     following,
     scroll_to_cursor,
 )
+from vterm.scheme import get_scheme_manager
 from vterm.terminal import Terminal
 from vterm.utils import SETTINGS_FILE
 
@@ -157,7 +158,7 @@ class FakeView:
 
 def make_terminal(rows=10, cols=20, scrollback=None):
     # real __init__ for the plain attributes; process/screen stand in for start()
-    terminal = Terminal(FakeView())
+    terminal = Terminal(FakeView(), get_scheme_manager("default"))
     if scrollback is not None:
         terminal.scrollback_size = scrollback
     terminal.process = FakeProcess()
@@ -165,9 +166,12 @@ def make_terminal(rows=10, cols=20, scrollback=None):
     return terminal, VtStream(terminal.screen)
 
 
-def make_command(view):
-    # the real __init__, so the fake cannot drift from the command's attributes
-    return VtermRenderCommand(view)
+def make_command(terminal):
+    # the real __init__, so the fake cannot drift from the command's attributes;
+    # run() itself sets _scheme, but these tests call its helpers directly
+    command = VtermRenderCommand(terminal.view)
+    command._scheme = terminal.scheme
+    return command
 
 
 # an app on the alternate screen must not have its view trimmed away: the
@@ -178,7 +182,7 @@ assert terminal.screen.alternate_buffer_mode
 assert terminal.screen.history.maxlen == 0, "alt screen zeroes the deque"
 
 terminal.view = FakeView("\n".join("row {}".format(i) for i in range(10)))
-command = make_command(terminal.view)
+command = make_command(terminal)
 before = terminal.view.text
 command.trim_history(None, terminal)
 assert terminal.view.text == before, \
@@ -188,7 +192,7 @@ assert terminal.view.text == before, \
 terminal, stream = make_terminal(rows=5, scrollback=20)
 terminal.offset = 40
 terminal.view = FakeView("\n".join("row {}".format(i) for i in range(40)))
-command = make_command(terminal.view)
+command = make_command(terminal)
 command.trim_history(None, terminal)
 rows_left = terminal.view.text.count("\n") + 1
 assert rows_left <= 20, rows_left
@@ -199,7 +203,7 @@ assert "row 0" not in terminal.view.text, "oldest rows must be dropped"
 terminal, stream = make_terminal(rows=5, scrollback=5000)
 terminal.offset = 3
 terminal.view = FakeView("\n".join("row {}".format(i) for i in range(8)))
-command = make_command(terminal.view)
+command = make_command(terminal)
 command.trim_history(None, terminal)
 assert "row 0" in terminal.view.text and "row 7" in terminal.view.text, \
     terminal.view.text
@@ -209,7 +213,7 @@ assert "row 0" in terminal.view.text and "row 7" in terminal.view.text, \
 terminal, stream = make_terminal(rows=4)
 stream.feed("\x1b[?1049h")
 terminal.view = FakeView("top\nrow\n\n")
-command = make_command(terminal.view)
+command = make_command(terminal)
 before = terminal.view.text
 command.trim_trailing_spaces(None, terminal)
 assert terminal.view.text == before, \
@@ -218,7 +222,7 @@ assert terminal.view.text == before, \
 # on the primary screen the blank tail below the cursor still goes
 terminal, stream = make_terminal(rows=4)
 terminal.view = FakeView("top\nrow\n\n")
-command = make_command(terminal.view)
+command = make_command(terminal)
 command.trim_trailing_spaces(None, terminal)
 assert terminal.view.text == "top\nrow", terminal.view.text
 
@@ -261,7 +265,7 @@ print("cursor visibility tests passed (hidden cursor keeps the caret)")
 # batches the runs that share a scope into one add_regions call
 terminal, stream = make_terminal(rows=3, cols=20)
 terminal.view = FakeView()
-command = make_command(terminal.view)
+command = make_command(terminal)
 stream.feed("\x1b[31mRED\x1b[0m..\x1b[31mred\x1b[0m..\x1b[32mgreen")
 command.update_lines(None, terminal)
 
@@ -291,7 +295,7 @@ print("colorize tests passed (arithmetic offsets, scope batching, key bookkeepin
 # the whole session, and merging every frame would re-send the whole chunk
 terminal, stream = make_terminal(rows=3, cols=20)
 terminal.view = FakeView()
-command = make_command(terminal.view)
+command = make_command(terminal)
 for i in range(300):
     stream.feed("\x1b[31mred{}\x1b[0m\r\n".format(i))
     command.update_lines(None, terminal)
@@ -310,7 +314,7 @@ assert len(row_keys) == 300 - CHUNK, \
 # trimming settles the open chunk, then erases the keys of chunks above the cut
 terminal, stream = make_terminal(rows=3, scrollback=30)
 terminal.view = FakeView()
-command = make_command(terminal.view)
+command = make_command(terminal)
 stream.feed("".join("\x1b[31mr{}\x1b[0m\r\n".format(i) for i in range(300)))
 command.update_lines(None, terminal)
 terminal.screen.dirty.clear()
@@ -332,7 +336,7 @@ terminal.view.sel().add(sublime.Region(0, 0))       # the caret of a new view
 Terminal._terminals[id(terminal)] = terminal
 terminal.view.id = lambda: id(terminal)
 terminal.default_title = "zsh"
-command = make_command(terminal.view)
+command = make_command(terminal)
 stream.feed("[vterm] %")
 command.run(None)
 assert all(r.empty() for r in terminal.view.sel()), \
@@ -359,10 +363,8 @@ assert all(text == "" for text in rewritten), "unchanged rows were rewritten: {}
 print("render diff tests passed (unchanged dirty rows skipped)")
 
 # the generated scheme must define a selection colour, or sublime uses blue
-from vterm.scheme import blend, scheme_manager
-scheme_manager.background = "#303841"
-scheme_manager.foreground = "#d8dee9"
-assert blend(scheme_manager.background, scheme_manager.foreground, 0.3) == "#626a73"
+from vterm.scheme import blend
+assert blend("#303841", "#d8dee9", 0.3) == "#626a73"
 
 print("selection artefact tests passed (fresh prompt unselected, user selection kept)")
 
@@ -370,7 +372,7 @@ print("selection artefact tests passed (fresh prompt unselected, user selection 
 # DECSCUSR drives the caret shape through view settings; before any app asks,
 # and for 0, the caret is the terminal default: a blinking block
 terminal, stream = make_terminal(rows=3, cols=20)
-command = make_command(terminal.view)
+command = make_command(terminal)
 settings = terminal.view.settings()
 
 command.sync_cursor_style(terminal)
@@ -621,7 +623,7 @@ terminal, stream = make_terminal(rows=5, cols=20)
 terminal.view = FakeView("old1\nold2\nold3\nr0\nr1\nr2\nr3\nr4\n")
 terminal.offset = 3
 terminal.viewport_y = 400
-command = make_command(terminal.view)
+command = make_command(terminal)
 fold_end = terminal.view.text_point(3, 0) - 1
 
 stream.feed("\x1b[?1049h")
@@ -649,7 +651,7 @@ assert terminal.view.folds == [], terminal.view.folds
 # without scrollback there is nothing to fold
 terminal, stream = make_terminal(rows=5, cols=20)
 terminal.view = FakeView("r0\nr1\nr2\nr3\nr4\n")
-command = make_command(terminal.view)
+command = make_command(terminal)
 stream.feed("\x1b[?1049h")
 command.sync_alt_fold(terminal)
 assert terminal.view.folds == [], terminal.view.folds

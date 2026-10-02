@@ -7,9 +7,9 @@ import sublime
 import sublime_plugin
 
 from .render import CONTINUATION, scroll_view
-from .scheme import SCHEME_PATH, scheme_manager
+from .scheme import get_scheme_manager
 from .terminal import Terminal
-from .themes import THEMES
+from .themes import ALL_THEME_NAMES, THEMES
 from .utils import SETTINGS_FILE, settings
 
 LOG = logging.getLogger(__name__)
@@ -43,12 +43,12 @@ class VtermOpenCommand(sublime_plugin.WindowCommand):
                 cwd = os.path.expanduser("~")
         cwd = sublime.expand_variables(cwd, window.extract_variables())
 
-        scheme_manager.initialize(window.active_view())
+        scheme = get_scheme_manager(settings().get("theme"), host_view=window.active_view())
 
         view = window.new_file()
-        view.run_command("vterm_initialize_view")
+        view.run_command("vterm_initialize_view", {"color_scheme": scheme.path})
 
-        terminal = Terminal(view)
+        terminal = Terminal(view, scheme)
         try:
             terminal.start(cmd, cwd=cwd, env=env, default_title=title or os.path.basename(cmd[0]))
         except Exception:
@@ -106,7 +106,7 @@ class VtermOpenTerminalProjectFolderCommand(sublime_plugin.WindowCommand):
 class VtermInitializeViewCommand(sublime_plugin.TextCommand):
     """Stamps a fresh view with the settings that make it a terminal."""
 
-    def run(self, _):
+    def run(self, _, color_scheme):
         """Apply the view settings; the pty starts only after this."""
         view = self.view
         view_settings = view.settings()
@@ -125,7 +125,7 @@ class VtermInitializeViewCommand(sublime_plugin.TextCommand):
         view_settings.set("draw_indent_guides", False)
         view_settings.set("scroll_past_end", False)
         view_settings.set("scroll_context_lines", 0)
-        view_settings.set("color_scheme", SCHEME_PATH)
+        view_settings.set("color_scheme", color_scheme)
         view_settings.set("syntax", "Packages/vterm/vterm.sublime-syntax")
         view_settings.set("spell_check", False)
         view_settings.set("detect_indentation", False)
@@ -225,13 +225,20 @@ class VtermPasteSelectionCommand(sublime_plugin.TextCommand):
 
 
 class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
-    """Pick a colour palette, previewing each as it is highlighted"""
+    """Retheme the focused terminal, previewing each choice as it is highlighted.
+
+    The chosen theme also becomes the default for terminals opened from now on;
+    it does not touch any other already-open terminal.
+    """
 
     def run(self):
-        """Show the palette picker, starting on the configured theme."""
-        self.settings = settings()
-        self.original = self.settings.get("theme")
-        self.choices = [None] + sorted(THEMES)
+        """Show the palette picker, starting on the focused terminal's own theme."""
+        view = self.window.active_view()
+        self.terminal = Terminal.from_id(view.id()) if view else None
+        if not self.terminal:
+            return
+        self.original = self.terminal.scheme.theme_name
+        self.choices = ALL_THEME_NAMES
 
         items = [["No theme", "follow the Sublime color scheme"]]
         for name in self.choices[1:]:
@@ -241,16 +248,32 @@ class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
         current = self.choices.index(self.original) if self.original in self.choices else 0
         self.window.show_quick_panel(items, self._done, selected_index=current, on_highlight=self._preview)
 
+    def is_enabled(self):
+        """Greys the palette entry out when the focused view is not a terminal."""
+        view = self.window.active_view()
+        return view is not None and Terminal.from_id(view.id()) is not None
+
+    def _apply(self, name):
+        """Retheme the focused terminal alone."""
+        scheme = get_scheme_manager(name, host_view=self.terminal.view)
+        self.terminal.retheme(scheme)
+
     def _preview(self, index):
-        """Apply a palette while it is highlighted, without saving it."""
-        self.settings.set("theme", self.choices[index])
+        """Apply a palette to the focused terminal while it is highlighted."""
+        self._apply(self.choices[index])
 
     def _done(self, index):
-        """Persist the choice, or restore the original if the panel was cancelled."""
+        """On cancel, restore the focused terminal's original theme.
+
+        On confirm, keep the focused terminal on its new theme and persist the
+        choice as the default for terminals opened from now on.
+        """
         if index == -1:
-            self.settings.set("theme", self.original)
+            self._apply(self.original)
             return
-        self.settings.set("theme", self.choices[index])
+        name = self.choices[index]
+        self._apply(name)
+        settings().set("theme", name)
         sublime.save_settings(SETTINGS_FILE)
 
 

@@ -8,16 +8,12 @@ import sublime
 
 from .emulator import ANSI_COLORS
 from .utils import settings
-from .themes import THEMES
+from .themes import ALL_THEME_NAMES, THEMES
 
 LOG = logging.getLogger(__name__)
 
 # written under Packages/User so it survives a package reinstall
 SCHEME_DIR_NAME = "User/vterm"
-# "hidden-" keeps the generated scheme out of the scheme picker
-SCHEME_FILE_NAME = "vterm.hidden-color-scheme"
-# the value terminal views get as their color_scheme setting
-SCHEME_PATH = "Packages/{}/{}".format(SCHEME_DIR_NAME, SCHEME_FILE_NAME)
 
 # each write makes sublime reload the scheme and restyle every view
 WRITE_DEBOUNCE_MS = 250
@@ -69,104 +65,61 @@ def _is_dark(color_text):
 
 
 class SchemeManager:
-    """Owns the generated scheme file and the set of known scopes."""
+    """Owns one theme's generated scheme file and set of known scopes."""
 
-    def __init__(self):
-        """Start on the built-in palette; initialize() picks up the real one."""
+    def __init__(self, theme_name):
+        """State only; build() resolves the palette and writes the file."""
+        self.theme_name = theme_name
+        self.file_name = "vterm-{}.hidden-color-scheme".format(theme_name or "system")
+        self.path = "Packages/{}/{}".format(SCHEME_DIR_NAME, self.file_name)
         self.lock = threading.Lock()
         self.rules = {}
         # key -> scope name; the render thread reads it without the lock, so it
-        # must never outlive self.rules (cleared together in _build)
+        # must never outlive self.rules (cleared together in build)
         self._names = {}
         self.foreground = "#ffffff"
         self.background = "#000000"
-        self._editor_fg = "#ffffff"
-        self._editor_bg = "#000000"
         self.ansi = dict(DEFAULT_ANSI)
         self._write_pending = False
-        self._initialized = False
         self._dir = None
-        self._host_view = None
-        self._listeners = []
 
-    def initialize(self, view):
-        """Pick up the palette, seed the rules, write the file. Main thread only"""
-        if self._initialized:
-            return
-        self._initialized = True
-        self._host_view = view
-
-        settings().add_on_change("vterm.theme", self.reload)
-        self._build()
-
-    def ensure_file(self):
-        """Write the scheme if missing: a restored tab's color_scheme is loaded during startup"""
-        if os.path.exists(os.path.join(self._directory(), SCHEME_FILE_NAME)):
-            return
-        with self.lock:
-            self._build()
-
-    def add_listener(self, callback):
-        """Called after every palette rebuild"""
-        self._listeners.append(callback)
-
-    def remove_listener(self, callback):
-        """Drop a rebuild subscriber; terminals unsubscribe when they die."""
-        if callback in self._listeners:
-            self._listeners.remove(callback)
-
-    def reload(self):
-        """Rebuild every rule for a new palette, then notify the terminals"""
-        if not self._initialized:
-            # no scheme file to maintain yet; initialize() will read the setting
-            return
-        with self.lock:
-            self._build()
-        for callback in list(self._listeners):
-            try:
-                callback()
-            except Exception:
-                LOG.warning("scheme listener failed", exc_info=True)
-
-    def _build(self):
+    def build(self, host_view=None):
         """Resolve the palette and regenerate every rule, then write the file.
 
         Rules cannot be appended after a palette change: each one stores resolved
-        colours, so they all have to be rebuilt. Caller holds the lock.
+        colours, so they all have to be rebuilt. Callable again later (e.g. to
+        re-sample the "No theme" palette from the editor's current colours).
         """
-        self._names = {}
-        self.rules = {}
-        self.ansi = dict(DEFAULT_ANSI)
+        with self.lock:
+            self._names = {}
+            self.rules = {}
+            self.ansi = dict(DEFAULT_ANSI)
 
-        theme = THEMES.get(settings().get("theme"))
+            theme = THEMES.get(self.theme_name)
 
-        if theme:
-            self.foreground = theme["foreground"]
-            self.background = theme["background"]
-            self.ansi.update({name: theme[name] for name in ANSI_COLORS if name in theme})
-        else:
-            # captured values outlive the view they came from
-            if self._host_view is not None and self._host_view.is_valid():
-                style = self._host_view.style()
-                self._editor_fg = style.get("foreground", self._editor_fg)
-                self._editor_bg = style.get("background", self._editor_bg)
-            self.foreground = self._editor_fg
-            self.background = self._editor_bg
+            if theme:
+                self.foreground = theme["foreground"]
+                self.background = theme["background"]
+                self.ansi.update({name: theme[name] for name in ANSI_COLORS if name in theme})
+            elif host_view is not None and host_view.is_valid():
+                style = host_view.style()
+                self.foreground = style.get("foreground", self.foreground)
+                self.background = style.get("background", self.background)
 
-        # user overrides sit on top of whichever palette was chosen
-        user_ansi = settings().get("ansi_colors", {})
-        for name in ANSI_COLORS:
-            if name in user_ansi:
-                self.ansi[name] = user_ansi[name]
+            # user overrides sit on top of whichever palette was chosen
+            user_ansi = settings().get("ansi_colors", {})
+            for name in ANSI_COLORS:
+                if name in user_ansi:
+                    self.ansi[name] = user_ansi[name]
 
-        # seeded so the first frame does not reference scopes the file lacks
-        for fg in ANSI_COLORS:
-            self._add_rule(fg, "default", "")
-            self._add_rule(fg, "default", "b")
-        self._add_rule("default", "default", "b")
-        self._add_rule("reverse_default", "reverse_default", "")
+            # seeded so the first frame does not reference scopes the file lacks
+            for fg in ANSI_COLORS:
+                self._add_rule(fg, "default", "")
+                self._add_rule(fg, "default", "b")
+            self._add_rule("default", "default", "b")
+            self._add_rule("reverse_default", "reverse_default", "")
 
-        self._write_file()
+            self._write_file()
 
     def is_dark(self):
         """Whether the active palette is dark; reported to the app via OSC 11 and DSR 996."""
@@ -258,11 +211,49 @@ class SchemeManager:
             },
             "rules": list(self.rules.values()),
         }
-        path = os.path.join(self._directory(), SCHEME_FILE_NAME)
+        path = os.path.join(self._directory(), self.file_name)
         with open(path, "w", encoding="utf-8") as f:
             # compact: sublime reparses the whole file on every write
             json.dump(scheme, f, separators=(",", ":"))
         LOG.debug("scheme written: rules=%s", len(self.rules))
 
 
-scheme_manager = SchemeManager()
+# one manager per theme name, built once and kept for the plugin host's life: the
+# built-in theme set is small and fixed, so there is nothing to garbage-collect
+_managers = {}
+
+
+def get_scheme_manager(theme_name, host_view=None):
+    """The manager for a theme name (None for "follow the Sublime colour scheme"),
+    building and caching it on first use.
+
+    The None entry is rebuilt on every call instead: it is a live sample of the
+    editor's current colours, not a static palette, so every caller handing a
+    terminal a "no theme" scheme gets one that is actually current.
+    """
+    manager = _managers.get(theme_name)
+    if manager is None:
+        manager = SchemeManager(theme_name)
+        _managers[theme_name] = manager
+        manager.build(host_view)
+    elif theme_name is None:
+        manager.build(host_view)
+    return manager
+
+
+def build_startup_schemes(host_view=None):
+    """Make sure every theme's colour scheme is on disk before Sublime reads a
+    restored tab's color_scheme at startup.
+
+    A named theme is static, so an existing file is left alone - rebuilding it
+    would just rewrite the same bytes, and each write makes sublime reload the
+    scheme and restyle every view using it. None always rebuilds, same as
+    get_scheme_manager.
+    """
+    for name in ALL_THEME_NAMES:
+        if name is None:
+            get_scheme_manager(None, host_view=host_view)
+            continue
+        manager = SchemeManager(name)
+        if not os.path.exists(os.path.join(manager._directory(), manager.file_name)):
+            get_scheme_manager(name)

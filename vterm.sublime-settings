@@ -22,8 +22,9 @@
     "min_columns": 20,
     "max_columns": 500,
 
-    // colour palette: "default", "homebrew", "pro", "slate", or null to
-    // follow the active Sublime colour scheme. Applies to open tabs too.
+    // colour palette: "default", "homebrew", "pro", "slate", "red-alert", or null
+    // to follow the active Sublime colour scheme. Default for terminals opened
+    // from now on; vterm: Select Theme retints the focused terminal and sets this.
     "theme": null,
 
     // override any of the 16 ANSI colors, e.g. {"red": "#ff0000"}

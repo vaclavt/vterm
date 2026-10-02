@@ -13,7 +13,6 @@ from pyte import modes as mo
 
 from .emulator import APP_CURSOR_MODE, VtScreen, VtStream
 from .keys import get_key_code
-from .scheme import scheme_manager
 from .utils import intermission, responsive, settings
 
 LOG = logging.getLogger(__name__)
@@ -98,9 +97,10 @@ class Terminal:
 
     _terminals = {}
 
-    def __init__(self, view):
+    def __init__(self, view, scheme=None):
         """State only; the pty and the threads come up in start()."""
         self.view = view
+        self.scheme = scheme
         # process.isalive() costs two waitpid syscalls; UI hooks read this instead
         self.alive = True
         self.default_title = ""
@@ -198,12 +198,11 @@ class Terminal:
             erase_scrollback=settings().get("honor_erase_scrollback", False),
             clear_callback=self._clear_callback,
             clipboard_callback=self._clipboard_callback,
-            fg_color=scheme_manager.foreground.lstrip("#"),
-            bg_color=scheme_manager.background.lstrip("#"),
-            is_dark=scheme_manager.is_dark(),
+            fg_color=self.scheme.foreground.lstrip("#"),
+            bg_color=self.scheme.background.lstrip("#"),
+            is_dark=self.scheme.is_dark(),
         )
         self.stream = VtStream(self.screen)
-        scheme_manager.add_listener(self.apply_scheme)
 
         self._start_rendering()
 
@@ -211,18 +210,23 @@ class Terminal:
         """Adopt a new palette; mode 2031 subscribers are told so they can restyle"""
         # the screen answers OSC 10/11 and DSR 996 from these values
         screen = self.screen
-        screen.default_fg_color = scheme_manager.foreground.lstrip("#")
-        screen.default_bg_color = scheme_manager.background.lstrip("#")
-        screen.theme_is_dark = scheme_manager.is_dark()
+        screen.default_fg_color = self.scheme.foreground.lstrip("#")
+        screen.default_bg_color = self.scheme.background.lstrip("#")
+        screen.theme_is_dark = self.scheme.is_dark()
         if screen.theme_notify_enabled():
             self.send_string(screen.theme_report(), normalized=False)
+
+    def retheme(self, scheme):
+        """Switch to a different scheme: vterm: Select Theme, scoped to this terminal."""
+        self.scheme = scheme
+        self.view.settings().set("color_scheme", scheme.path)
+        self.apply_scheme()
 
     def kill(self):
         """Terminate the child and drop this terminal from the registry."""
         LOG.debug("[kill] terminating process")
         self.alive = False
         self._wake.set()
-        scheme_manager.remove_listener(self.apply_scheme)
         try:
             self.process.terminate()
         except Exception:

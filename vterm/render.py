@@ -15,7 +15,6 @@ from wcwidth import wcswidth
 # per-cell call in segment_buffer_line
 cell_width = lru_cache(maxsize=4096)(wcswidth)
 
-from .scheme import scheme_manager
 from .terminal import Terminal
 from .utils import rev_wcwidth
 
@@ -124,6 +123,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
     def __init__(self, *args, **kwargs):
         """Set up this view's render caches."""
         super().__init__(*args, **kwargs)
+        # the terminal's current SchemeManager; set at the top of each run()
+        self._scheme = None
         self.colored_lines = {}
         # view row -> (segments, lf) as last rendered; the dirty set is only a
         # repaint hint, so most dirty rows are identical frame to frame
@@ -156,6 +157,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         terminal = Terminal.from_id(view.id())
         if not terminal:
             return
+        self._scheme = terminal.scheme
 
         screen = terminal.screen
         # the caret and the tab name are the user's; an unfocused terminal leaves
@@ -320,7 +322,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             if is_default_run(fg, bg, style):
                 continue
             needed = max(needed, end)
-            by_scope.setdefault(scheme_manager.scope(fg, bg, style), []).append((start, end))
+            by_scope.setdefault(self._scheme.scope(fg, bg, style), []).append((start, end))
 
         text = "".join(s[0] for s in segments)
         if lf:
@@ -391,7 +393,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             for _, a, b, fg, bg, style in segments:
                 if is_default_run(fg, bg, style):
                     continue
-                scope = scheme_manager.scope(fg, bg, style)
+                scope = self._scheme.scope(fg, bg, style)
                 grouped.setdefault(scope, []).append(sublime.Region(start + a, start + b))
 
         scopes = self._archived_chunks.setdefault(chunk, set())

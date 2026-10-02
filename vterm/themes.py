@@ -71,3 +71,6 @@ THEMES = {
         "light_white": "#ffffff",
     },
 }
+
+# every selectable theme, including None for "follow the active Sublime colour scheme"
+ALL_THEME_NAMES = [None] + sorted(THEMES)

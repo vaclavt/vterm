@@ -87,3 +87,7 @@ def expand_variables(value, variables):
 
 def version():
     return "4200"
+
+
+def active_window():
+    return None

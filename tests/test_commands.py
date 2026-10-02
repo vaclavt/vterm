@@ -5,7 +5,10 @@ from _bootstrap import FakeProcess
 
 import sublime
 from vterm.commands import VtermPasteSelectionCommand, VtermSelectThemeCommand, selection_text
+from vterm.emulator import VtScreen
 from vterm.render import CONTINUATION
+from vterm.scheme import get_scheme_manager
+from vterm.terminal import Terminal
 from vterm.utils import SETTINGS_FILE
 from vterm.themes import THEMES
 
@@ -13,72 +16,113 @@ settings = sublime.load_settings(SETTINGS_FILE)
 panel = {}
 
 
+class FakeTerminalView:
+    """Just enough view for a Terminal to be rethemed: an id and its own settings."""
+
+    _next_id = 1
+
+    def __init__(self):
+        self._id = FakeTerminalView._next_id
+        FakeTerminalView._next_id += 1
+        self._settings = sublime.Settings()
+
+    def id(self):
+        return self._id
+
+    def settings(self):
+        return self._settings
+
+    def is_valid(self):
+        return True
+
+    def style(self):
+        return {}
+
+
 class FakeWindow:
+    def __init__(self, view):
+        self._view = view
+
+    def active_view(self):
+        return self._view
+
     def show_quick_panel(self, items, on_done, selected_index=-1, on_highlight=None):
         panel.update(items=items, on_done=on_done,
                      selected_index=selected_index, on_highlight=on_highlight)
 
 
-def open_picker(current):
-    settings.set("theme", current)
-    command = VtermSelectThemeCommand(FakeWindow())
+def fake_terminal(theme_name):
+    """A terminal frozen to a theme, registered the way a real one is."""
+    view = FakeTerminalView()
+    terminal = Terminal(view, get_scheme_manager(theme_name))
+    terminal.screen = VtScreen(20, 3, process=FakeProcess())
+    Terminal._terminals[view.id()] = terminal
+    return terminal
+
+
+def open_picker(terminal):
+    command = VtermSelectThemeCommand(FakeWindow(terminal.view))
     command.run()
     return command
 
 
 # every theme is offered, with "no theme" first
-command = open_picker(None)
+command = open_picker(fake_terminal(None))
 assert [i[0] for i in panel["items"]] == ["No theme"] + sorted(THEMES), panel["items"]
 assert panel["selected_index"] == 0
 
-# the configured theme starts highlighted
-command = open_picker("pro")
+# the focused terminal's own theme starts highlighted, not the global default
+settings.set("theme", "homebrew")
+terminal = fake_terminal("pro")
+command = open_picker(terminal)
 assert panel["selected_index"] == command.choices.index("pro")
 
-# highlighting previews but must not persist
+# highlighting previews the focused terminal alone, leaving the global default and
+# every other terminal untouched
+other = fake_terminal("default")
 saves = len(sublime._saved)
 panel["on_highlight"](command.choices.index("slate"))
-assert settings.get("theme") == "slate", settings.get("theme")
+assert terminal.scheme.theme_name == "slate", terminal.scheme.theme_name
+assert terminal.view.settings().get("color_scheme") == terminal.scheme.path
+assert other.scheme.theme_name == "default", "another open terminal must not retheme"
+assert settings.get("theme") == "homebrew", "preview must not touch the global default"
 assert len(sublime._saved) == saves, "preview must not save settings"
 
-# cancelling restores the value from before the panel opened
+# cancelling restores the focused terminal's theme from before the panel opened
 panel["on_done"](-1)
-assert settings.get("theme") == "pro", settings.get("theme")
+assert terminal.scheme.theme_name == "pro", terminal.scheme.theme_name
 
-# confirming persists
-command = open_picker("pro")
+# confirming retheme the focused terminal and persists the default for new terminals
+command = open_picker(terminal)
 panel["on_done"](command.choices.index("homebrew"))
+assert terminal.scheme.theme_name == "homebrew", terminal.scheme.theme_name
 assert settings.get("theme") == "homebrew", settings.get("theme")
 assert sublime._saved[-1] == SETTINGS_FILE
+assert other.scheme.theme_name == "default", "another open terminal must not retheme"
 
 # "no theme" persists as null rather than a name
-command = open_picker("slate")
+command = open_picker(fake_terminal("slate"))
 panel["on_done"](0)
 assert settings.get("theme") is None, settings.get("theme")
 
 print("theme picker tests passed ({} themes offered)".format(len(THEMES)))
 
 
-# a palette change must reach terminals that are already running: the screen
-# answers OSC 10/11 and DSR 996 from these values
-from vterm.emulator import VtScreen, VtStream
-from vterm.scheme import scheme_manager
-from vterm.terminal import Terminal
-
+# a palette change must reach the screen it was applied to: it answers OSC 10/11
+# and DSR 996 from these values
+from vterm.emulator import VtStream
 
 recorder = FakeProcess()
-# real __init__ (view unused here); process/screen stand in for start()
-terminal = Terminal(None)
+terminal = fake_terminal("default")
 terminal.screen = VtScreen(20, 3, process=recorder, fg_color="000000",
                            bg_color="ffffff", is_dark=False)
 terminal.process = recorder
 stream = VtStream(terminal.screen)
 
-scheme_manager.foreground = "#eeeeee"
-scheme_manager.background = "#111111"
+terminal.scheme = get_scheme_manager("slate")
 terminal.apply_scheme()
-assert terminal.screen.default_bg_color == "111111", terminal.screen.default_bg_color
-assert terminal.screen.theme_is_dark is True
+assert terminal.screen.default_fg_color == terminal.scheme.foreground.lstrip("#")
+assert terminal.screen.default_bg_color == terminal.scheme.background.lstrip("#")
 
 # without mode 2031 the app is not interrupted
 assert recorder.written == "", repr(recorder.written)
@@ -92,37 +136,30 @@ assert recorder.written == "\x1b[?997;1n", repr(recorder.written)
 # and the emulator answers a colour query with the new palette
 recorder.written = ""
 stream.feed("\x1b]11;?\x07")
-assert recorder.written == "\x1b]11;rgb:1111/1111/1111\x07", repr(recorder.written)
+bg = terminal.screen.default_bg_color
+expected = "\x1b]11;rgb:{0}{0}/{1}{1}/{2}{2}\x07".format(bg[0:2], bg[2:4], bg[4:6])
+assert recorder.written == expected, repr(recorder.written)
 
 print("live theme tests passed (running screen adopts palette, app notified)")
 
 
 # the scheme file must exist before any restored tab's color_scheme is loaded at
-# startup, and building twice must not duplicate the seeded rules
+# startup, and building a theme twice must not duplicate its seeded rules
 import os
-from vterm.scheme import SCHEME_FILE_NAME
 
-path = os.path.join(scheme_manager._directory(), SCHEME_FILE_NAME)
-if os.path.exists(path):
-    os.remove(path)
+scheme = get_scheme_manager("pro")
+path = os.path.join(scheme._directory(), scheme.file_name)
+assert os.path.exists(path), "get_scheme_manager did not write the scheme"
 
-scheme_manager.ensure_file()
-assert os.path.exists(path), "ensure_file did not write the scheme"
-assert not scheme_manager._initialized, \
-    "ensure_file must leave the palette open to refinement by initialize()"
+# the cached instance is reused, not rebuilt
+assert get_scheme_manager("pro") is scheme, "theme managers must be cached"
 
-# a second call is a no-op: same file, untouched
-stamp = os.path.getmtime(path)
-scheme_manager.ensure_file()
-assert os.path.getmtime(path) == stamp, "ensure_file rewrote an existing scheme"
-
-# _build is idempotent, which is what makes the ensure_file + initialize pair safe
-with scheme_manager.lock:
-    scheme_manager._build()
-    first = len(scheme_manager.rules)
-    scheme_manager._build()
-assert len(scheme_manager.rules) == first, \
-    "rules duplicated: {} -> {}".format(first, len(scheme_manager.rules))
+# build is idempotent
+with scheme.lock:
+    first = len(scheme.rules)
+scheme.build()
+assert len(scheme.rules) == first, \
+    "rules duplicated: {} -> {}".format(first, len(scheme.rules))
 
 print("scheme file tests passed ({} seeded rules, idempotent)".format(first))
 

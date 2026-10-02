@@ -63,10 +63,9 @@ assert get_key_code(key="enter", modify_other_keys=2) == "\r", "unmodified keys 
 assert get_key_code(key="c", ctrl=True, modify_other_keys=2) == "\x03", "ctrl+c stays a control byte"
 load_sublime_json("Default (OSX).sublime-mousemap")
 
-# scheme manager produces scopes and rules
-import vterm.scheme as scheme_module
-from vterm.scheme import scheme_manager
-scope = scheme_manager.scope("ff0000", "default", "b")
+# a theme's scheme manager produces scopes and rules
+from vterm.scheme import get_scheme_manager
+scope = get_scheme_manager("default").scope("ff0000", "default", "b")
 assert scope == "vterm.ff0000.default.b", scope
 
 # every command referenced by the palette and the keymap must exist, and the
@@ -114,21 +113,30 @@ for name, theme in THEMES.items():
 configured = load_sublime_json("vterm.sublime-settings").get("theme")
 assert configured is None or configured in THEMES, configured
 
-# plugin_loaded must create the colour scheme: sublime loads a restored tab's
-# color_scheme during startup, before any terminal opens
+# plugin_loaded must create every theme's colour scheme: sublime loads a restored
+# tab's color_scheme during startup, before any terminal opens, and it may name
+# any of them
 # import main.py the way sublime does - as a module of the package directory -
 # so its relative imports and plugin_loaded body are actually executed
+import sublime
+from vterm.scheme import SCHEME_DIR_NAME, SchemeManager
+from vterm.themes import ALL_THEME_NAMES
+
+scheme_dir = os.path.join(sublime.packages_path(), *SCHEME_DIR_NAME.split("/"))
+scheme_files = [os.path.join(scheme_dir, SchemeManager(name).file_name) for name in ALL_THEME_NAMES]
+for scheme_file in scheme_files:
+    if os.path.exists(scheme_file):
+        os.remove(scheme_file)
+
 pkg = types.ModuleType("vterm")
 pkg.__path__ = [ROOT]
 sys.modules["vterm"] = pkg
 main = importlib.import_module("vterm.main")
 
-scheme_file = os.path.join(main.scheme_manager._directory(), scheme_module.SCHEME_FILE_NAME)
-if os.path.exists(scheme_file):
-    os.remove(scheme_file)
 main.plugin_loaded()
-assert os.path.exists(scheme_file), \
-    "plugin_loaded must leave the colour scheme on disk"
+for name, scheme_file in zip(ALL_THEME_NAMES, scheme_files):
+    assert os.path.exists(scheme_file), \
+        "plugin_loaded must leave {}'s colour scheme on disk".format(name)
 
 print("import smoke test passed ({} keymap bindings, {} pending flags, "
       "{} themes)".format(len(keymap), len(flags), len(THEMES)))

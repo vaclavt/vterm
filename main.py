@@ -5,6 +5,8 @@ registry would orphan open terminal tabs.
 """
 import logging
 
+import sublime
+
 # imported for sublime's command discovery, not called here
 from .vterm.commands import (
     VtermClearScreenCommand,
@@ -28,7 +30,7 @@ from .vterm.mouse import (
     VtermMouseEventListener,
     VtermScrollCommand,
 )
-from .vterm.scheme import scheme_manager
+from .vterm.scheme import build_startup_schemes
 from .vterm.utils import settings
 from .vterm.render import (
     VtermRenderCommand,
@@ -37,9 +39,12 @@ from .vterm.render import (
 
 
 def plugin_loaded():
-    """Write the colour scheme and set the log level, once per plugin host."""
-    # synchronous: a restored tab's color_scheme is read during startup
-    scheme_manager.ensure_file()
+    """Write any missing theme's colour scheme and set the log level, once per
+    plugin host: a restored tab's color_scheme is read during startup and may
+    name any of them.
+    """
+    view = sublime.active_window().active_view() if sublime.active_window() else None
+    build_startup_schemes(view)
 
     level = logging.DEBUG if settings().get("debug", False) else logging.INFO
     logging.basicConfig()

@@ -9,7 +9,7 @@
 | `vterm/terminal.py` | `Terminal`: pty process, emulator ownership, the reader/renderer threads, and everything written back to the app. |
 | `vterm/emulator.py` | `VtScreen` and `VtStream`: pyte subclasses adding the terminal features these agents need. |
 | `vterm/render.py` | Screen → view text, colour overlays, caret, folding, trimming. |
-| `vterm/scheme.py` | `SchemeManager`: generates the colour scheme that defines the scopes the renderer paints with. |
+| `vterm/scheme.py` | `SchemeManager`: generates one theme's colour scheme, the scopes the renderer paints with. `get_scheme_manager` caches one instance per theme name, each terminal frozen to the instance it was opened or rethemed with. |
 | `vterm/themes.py` | The built-in palettes (`default`, `homebrew`, `pro`, `slate`, `red-alert`). |
 | `vterm/commands.py` | The Sublime commands: open, keypress, copy/paste, theme picker, clear, cleanup, close. |
 | `vterm/listeners.py` | `VtermCoreEventListener`: focus, IME capture, copy/paste rerouting, the mousemap context. |
