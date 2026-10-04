@@ -233,8 +233,7 @@ class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
 
     def run(self):
         """Show the palette picker, starting on the focused terminal's own theme."""
-        view = self.window.active_view()
-        self.terminal = Terminal.from_id(view.id()) if view else None
+        self.terminal = self._focused_terminal()
         if not self.terminal:
             return
         self.original = self.terminal.scheme.theme_name
@@ -250,8 +249,12 @@ class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
 
     def is_enabled(self):
         """Greys the palette entry out when the focused view is not a terminal."""
+        return self._focused_terminal() is not None
+
+    def _focused_terminal(self):
+        """The terminal in the focused view, if any."""
         view = self.window.active_view()
-        return view is not None and Terminal.from_id(view.id()) is not None
+        return Terminal.from_id(view.id()) if view else None
 
     def _apply(self, name):
         """Retheme the focused terminal alone."""

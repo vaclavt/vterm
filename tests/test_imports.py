@@ -88,7 +88,7 @@ for entry in load_sublime_json("vterm.sublime-commands") + keymap:
 
 # every pending_* name mentioned in the modules must be a real Terminal
 # attribute, so a renamed flag cannot leave a writer pointing at nothing
-flags = {f for f in vars(Terminal(None)) if f.startswith("pending_")}
+flags = {f for f in vars(Terminal(None, None)) if f.startswith("pending_")}
 assert flags == {"pending_clear", "pending_clear_screen", "pending_render"}, flags
 for module in (commands, render, terminal_module):
     with open(module.__file__, encoding="utf-8") as f:
@@ -118,12 +118,10 @@ assert configured is None or configured in THEMES, configured
 # any of them
 # import main.py the way sublime does - as a module of the package directory -
 # so its relative imports and plugin_loaded body are actually executed
-import sublime
-from vterm.scheme import SCHEME_DIR_NAME, SchemeManager
+from vterm.scheme import SchemeManager
 from vterm.themes import ALL_THEME_NAMES
 
-scheme_dir = os.path.join(sublime.packages_path(), *SCHEME_DIR_NAME.split("/"))
-scheme_files = [os.path.join(scheme_dir, SchemeManager(name).file_name) for name in ALL_THEME_NAMES]
+scheme_files = [SchemeManager(name).file_path() for name in ALL_THEME_NAMES]
 for scheme_file in scheme_files:
     if os.path.exists(scheme_file):
         os.remove(scheme_file)

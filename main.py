@@ -43,7 +43,8 @@ def plugin_loaded():
     plugin host: a restored tab's color_scheme is read during startup and may
     name any of them.
     """
-    view = sublime.active_window().active_view() if sublime.active_window() else None
+    window = sublime.active_window()
+    view = window.active_view() if window else None
     build_startup_schemes(view)
 
     level = logging.DEBUG if settings().get("debug", False) else logging.INFO

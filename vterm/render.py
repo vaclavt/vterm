@@ -318,11 +318,12 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
         by_scope = {}
         needed = 0
+        scope_of = self._scheme.scope
         for _, start, end, fg, bg, style in segments:
             if is_default_run(fg, bg, style):
                 continue
             needed = max(needed, end)
-            by_scope.setdefault(self._scheme.scope(fg, bg, style), []).append((start, end))
+            by_scope.setdefault(scope_of(fg, bg, style), []).append((start, end))
 
         text = "".join(s[0] for s in segments)
         if lf:
@@ -382,6 +383,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
         grouped = {}
         stale = []
+        scope_of = self._scheme.scope
         for row in rows:
             keys = self.colored_lines.pop(row, None)
             if not keys:
@@ -393,7 +395,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             for _, a, b, fg, bg, style in segments:
                 if is_default_run(fg, bg, style):
                     continue
-                scope = self._scheme.scope(fg, bg, style)
+                scope = scope_of(fg, bg, style)
                 grouped.setdefault(scope, []).append(sublime.Region(start + a, start + b))
 
         scopes = self._archived_chunks.setdefault(chunk, set())

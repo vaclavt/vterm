@@ -109,7 +109,7 @@ colours:
   focused terminal immediately and sets this; other already-open terminals keep
   whatever theme they had.
 - `ansi_colors` — override individual base colours, e.g. `{"red": "#ff0000"}`,
-  applied on top of the theme.
+  applied on top of the theme. Takes effect after a Sublime restart.
 
 A light theme is reported to the running agent (OSC 11, DSR 996), so `pi` and
 `claude` switch to their light UI to match. An app subscribed to mode 2031 is also

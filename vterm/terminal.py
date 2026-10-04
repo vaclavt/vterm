@@ -97,7 +97,7 @@ class Terminal:
 
     _terminals = {}
 
-    def __init__(self, view, scheme=None):
+    def __init__(self, view, scheme):
         """State only; the pty and the threads come up in start()."""
         self.view = view
         self.scheme = scheme
@@ -218,6 +218,8 @@ class Terminal:
 
     def retheme(self, scheme):
         """Switch to a different scheme: vterm: Select Theme, scoped to this terminal."""
+        if scheme is self.scheme:
+            return
         self.scheme = scheme
         self.view.settings().set("color_scheme", scheme.path)
         self.apply_scheme()

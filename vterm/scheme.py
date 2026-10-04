@@ -181,6 +181,10 @@ class SchemeManager:
             rule["font_style"] = " ".join(font_style)
         self.rules[(fg, bg, style)] = rule
 
+    def file_path(self):
+        """Filesystem path of the generated scheme file."""
+        return os.path.join(self._directory(), self.file_name)
+
     def _directory(self):
         """Path of the generated scheme's directory, created on first use."""
         if self._dir is None:
@@ -211,8 +215,7 @@ class SchemeManager:
             },
             "rules": list(self.rules.values()),
         }
-        path = os.path.join(self._directory(), self.file_name)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(self.file_path(), "w", encoding="utf-8") as f:
             # compact: sublime reparses the whole file on every write
             json.dump(scheme, f, separators=(",", ":"))
         LOG.debug("scheme written: rules=%s", len(self.rules))
@@ -227,8 +230,8 @@ def get_scheme_manager(theme_name, host_view=None):
     """The manager for a theme name (None for "follow the Sublime colour scheme"),
     building and caching it on first use.
 
-    The None entry is rebuilt on every call instead: it is a live sample of the
-    editor's current colours, not a static palette, so every caller handing a
+    The None entry is rebuilt whenever the editor's colours have changed since: it
+    is a live sample of them, not a static palette, so every caller handing a
     terminal a "no theme" scheme gets one that is actually current.
     """
     manager = _managers.get(theme_name)
@@ -236,8 +239,10 @@ def get_scheme_manager(theme_name, host_view=None):
         manager = SchemeManager(theme_name)
         _managers[theme_name] = manager
         manager.build(host_view)
-    elif theme_name is None:
-        manager.build(host_view)
+    elif theme_name is None and host_view is not None and host_view.is_valid():
+        style = host_view.style()
+        if (style.get("foreground"), style.get("background")) != (manager.foreground, manager.background):
+            manager.build(host_view)
     return manager
 
 
@@ -254,6 +259,5 @@ def build_startup_schemes(host_view=None):
         if name is None:
             get_scheme_manager(None, host_view=host_view)
             continue
-        manager = SchemeManager(name)
-        if not os.path.exists(os.path.join(manager._directory(), manager.file_name)):
+        if not os.path.exists(SchemeManager(name).file_path()):
             get_scheme_manager(name)
