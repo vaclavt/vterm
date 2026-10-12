@@ -12,6 +12,7 @@ from vterm.emulator import VtScreen, VtStream
 from vterm.mouse import VtermMouseClickCommand, VtermScrollCommand
 from vterm.render import (
     CHUNK,
+    RenderState,
     VtermRenderCommand,
     focus_cursor,
     following,
@@ -171,6 +172,8 @@ def make_command(terminal):
     # run() itself sets _scheme, but these tests call its helpers directly
     command = VtermRenderCommand(terminal.view)
     command._scheme = terminal.scheme
+    terminal.render_state = RenderState()
+    command.state = terminal.render_state
     return command
 
 
@@ -282,12 +285,35 @@ assert terminal.view.text.startswith("RED..red..green"), repr(terminal.view.text
 assert len(painted) == 2, painted
 
 # keys are unique per view and recorded so decolorize_line can erase them
-assert sorted(terminal.view.regions) == sorted(command.colored_lines[0]), \
+assert sorted(terminal.view.regions) == sorted(command.state.colored_lines[0]), \
     "colored_lines must track exactly the keys that were added"
 command.decolorize_line(0)
 assert terminal.view.regions == {}, "decolorize must erase every key it added"
 
 print("colorize tests passed (arithmetic offsets, scope batching, key bookkeeping)")
+
+
+# sublime rebuilds every TextCommand instance whenever any plugin loads; the
+# bookkeeping lives on the terminal so a rebuilt command still erases what the
+# old one painted, and its keys never collide with keys still in use
+terminal, stream = make_terminal(rows=3, cols=20)
+terminal.view = FakeView()
+command = make_command(terminal)
+stream.feed("\x1b[31mred line\x1b[0m\r\nplain")
+command.update_lines(None, terminal)
+terminal.screen.dirty.clear()
+assert terminal.view.regions, "the red row must be painted"
+# a reload: new command, same terminal
+reloaded = VtermRenderCommand(terminal.view)
+reloaded._scheme = terminal.scheme
+reloaded.state = terminal.render_state
+stream.feed("\x1b[H\x1b[2Kgone")
+reloaded.update_lines(None, terminal)
+assert terminal.view.regions == {}, \
+    "a rebuilt command must erase the old overlay: {}".format(terminal.view.regions)
+assert reloaded.next_key() != "vterm#1", "keys must continue, not restart"
+
+print("reload tests passed (render state survives a rebuilt command)")
 
 
 # rows that leave the screen have their colours merged onto shared per-(scope,
@@ -318,10 +344,10 @@ command = make_command(terminal)
 stream.feed("".join("\x1b[31mr{}\x1b[0m\r\n".format(i) for i in range(300)))
 command.update_lines(None, terminal)
 terminal.screen.dirty.clear()
-assert set(command._archived_chunks) == {0}, command._archived_chunks
+assert set(command.state.archived_chunks) == {0}, command.state.archived_chunks
 command.trim_history(None, terminal)
 assert "vterm@0@vterm.red.default" not in terminal.view.regions, "trimmed chunk key left behind"
-assert 0 not in command._archived_chunks
+assert 0 not in command.state.archived_chunks
 assert "vterm@1@vterm.red.default" in terminal.view.regions, "boundary chunk must survive"
 
 print("scrollback archive tests passed (chunk keys bounded, trim erases whole chunks)")

@@ -52,10 +52,11 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
   `Char` carrying the extra `linefeed` field.
 - **`SchemeManager`** (`scheme.py`) — module singleton `scheme_manager`. Owns the
   generated scheme file and the mapping from colour combination to scope name.
-- **`VtermRenderCommand`** (`render.py`) — Sublime keeps **one command instance per
-  view**, so its `colored_lines`, `_row_cache`, `_key_counter`, the scrollback chunk
-  bookkeeping (`_archived_chunks`, `_open_rows`, `_open_chunk`, `_trimmed`) and
-  `_lastrow` are that view's render state.
+- **`VtermRenderCommand`** (`render.py`) — the per-frame logic. Sublime rebuilds every
+  `TextCommand` instance whenever any plugin loads, so the view's render state
+  (`RenderState`: `colored_lines`, `row_cache`, `key_counter`, the scrollback chunk
+  bookkeeping `archived_chunks`, `open_rows`, `open_chunk`, `trimmed`) lives on
+  `terminal.render_state`, bound as `self.state` at the top of each `run()`.
 
 ### Commands
 

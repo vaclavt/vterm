@@ -101,6 +101,7 @@ class Terminal:
         """State only; the pty and the threads come up in start()."""
         self.view = view
         self.scheme = scheme
+        self.render_state = None
         # process.isalive() costs two waitpid syscalls; UI hooks read this instead
         self.alive = True
         self.default_title = ""

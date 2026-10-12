@@ -116,34 +116,49 @@ def ensure_position(view, edit, row, col=0):
         view.insert(edit, line_region.end(), " " * (col - lastcol))
 
 
-class VtermRenderCommand(sublime_plugin.TextCommand):
-    """Draws the screen into the view. Sublime keeps one instance per view, so
-    the caches below are that view's render state."""
+class RenderState:
+    """A view's render bookkeeping, kept on its Terminal.
 
-    def __init__(self, *args, **kwargs):
-        """Set up this view's render caches."""
-        super().__init__(*args, **kwargs)
-        # the terminal's current SchemeManager; set at the top of each run()
-        self._scheme = None
+    Sublime rebuilds every TextCommand instance of every view whenever any
+    plugin module loads. State held on the command is lost then: the overlays
+    already in the view become untracked, so a row rewrite no longer erases
+    them, and the key counter restarts and hands out keys still in use.
+    """
+
+    def __init__(self):
+        """Empty bookkeeping, for a view that has nothing painted yet."""
+        # view row -> region keys painted on it
         self.colored_lines = {}
         # view row -> (segments, lf) as last rendered; the dirty set is only a
         # repaint hint, so most dirty rows are identical frame to frame
-        self._row_cache = {}
-        self._key_counter = 0
+        self.row_cache = {}
+        self.key_counter = 0
         # chunk ordinal -> scopes it holds a key for; ordinals are view row +
         # rows trimmed so far, so they survive trim_history renumbering
-        self._archived_chunks = {}
+        self.archived_chunks = {}
         # rows waiting for their chunk to close, and the chunk they belong to
-        self._open_rows = []
-        self._open_chunk = None
-        self._trimmed = 0
+        self.open_rows = []
+        self.open_chunk = None
+        self.trimmed = 0
+
+
+class VtermRenderCommand(sublime_plugin.TextCommand):
+    """Draws the screen into the view. Holds nothing a frame depends on: the
+    view's bookkeeping is `terminal.render_state` (see RenderState)."""
+
+    def __init__(self, *args, **kwargs):
+        """Per-instance scratch only; the render state is bound in run()."""
+        super().__init__(*args, **kwargs)
+        # the terminal's current SchemeManager and RenderState; set at the top of each run()
+        self._scheme = None
+        self.state = None
         self._lastrow = 0
         self._applied_cursor_style = None
 
     def next_key(self):
         """A region key unique to this view; per-row keys would collide after trim_history renumbers rows"""
-        self._key_counter += 1
-        return "vterm#{}".format(self._key_counter)
+        self.state.key_counter += 1
+        return "vterm#{}".format(self.state.key_counter)
 
     def ensure_row(self, edit, row):
         """Row-existence check for the hot path, tracking the last row in python"""
@@ -158,6 +173,9 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         if not terminal:
             return
         self._scheme = terminal.scheme
+        if terminal.render_state is None:
+            terminal.render_state = RenderState()
+        self.state = terminal.render_state
 
         screen = terminal.screen
         # the caret and the tab name are the user's; an unfocused terminal leaves
@@ -256,16 +274,16 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         screen = terminal.screen
 
         view.replace(edit, sublime.Region(0, view.size()), "")
-        for line in list(self.colored_lines):
+        for line in list(self.state.colored_lines):
             self.decolorize_line(line)
-        for chunk, scopes in self._archived_chunks.items():
+        for chunk, scopes in self.state.archived_chunks.items():
             for scope in scopes:
                 view.erase_regions(chunk_key(chunk, scope))
-        self._archived_chunks.clear()
-        self._open_rows = []
-        self._open_chunk = None
-        self._trimmed = 0
-        self._row_cache.clear()
+        self.state.archived_chunks.clear()
+        self.state.open_rows = []
+        self.state.open_chunk = None
+        self.state.trimmed = 0
+        self.state.row_cache.clear()
         terminal.offset = 0
         screen.history.clear()
         if wipe_screen:
@@ -312,9 +330,9 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         # the dirty set is a repaint hint, not a diff: most dirty rows come
         # back identical, and rewriting one costs an edit plus its region churn
         rendered = (segments, lf)
-        if self._row_cache.get(line) == rendered:
+        if self.state.row_cache.get(line) == rendered:
             return
-        self._row_cache[line] = rendered
+        self.state.row_cache[line] = rendered
 
         by_scope = {}
         needed = 0
@@ -343,7 +361,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
     def colorize_line(self, line, line_start, by_scope):
         """Lay the colour overlays for one row, one add_regions per scope."""
         view = self.view
-        keys = self.colored_lines.setdefault(line, []) if by_scope else None
+        keys = self.state.colored_lines.setdefault(line, []) if by_scope else None
         for scope, spans in by_scope.items():
             key = self.next_key()
             view.add_regions(key, [sublime.Region(line_start + a, line_start + b) for a, b in spans], scope)
@@ -351,21 +369,21 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
     def decolorize_line(self, line):
         """Drop a row's colour overlays before it is rewritten or erased."""
-        if line in self.colored_lines:
-            for key in self.colored_lines[line]:
+        if line in self.state.colored_lines:
+            for key in self.state.colored_lines[line]:
                 self.view.erase_regions(key)
-            del self.colored_lines[line]
+            del self.state.colored_lines[line]
 
     def archive_rows(self, rows):
         """Queue rows that left the screen for their chunk's merge."""
         for row in rows:
-            if row not in self.colored_lines:
+            if row not in self.state.colored_lines:
                 continue
-            chunk = (row + self._trimmed) // CHUNK
-            if chunk != self._open_chunk:
+            chunk = (row + self.state.trimmed) // CHUNK
+            if chunk != self.state.open_chunk:
                 self.flush_chunk()
-                self._open_chunk = chunk
-            self._open_rows.append(row)
+                self.state.open_chunk = chunk
+            self.state.open_rows.append(row)
 
     def flush_chunk(self):
         """Merge the queued rows onto shared per-(scope, chunk) keys.
@@ -376,8 +394,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         whole set, so merging every frame would be quadratic in CHUNK.
         """
         view = self.view
-        rows, chunk = self._open_rows, self._open_chunk
-        self._open_rows = []
+        rows, chunk = self.state.open_rows, self.state.open_chunk
+        self.state.open_rows = []
         if not rows:
             return
 
@@ -385,12 +403,12 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         stale = []
         scope_of = self._scheme.scope
         for row in rows:
-            keys = self.colored_lines.pop(row, None)
+            keys = self.state.colored_lines.pop(row, None)
             if not keys:
                 continue
             stale += keys
             # the segments that were painted, straight from the row cache
-            segments = self._row_cache[row][0]
+            segments = self.state.row_cache[row][0]
             start = view.line(view.text_point(row, 0)).begin()
             for _, a, b, fg, bg, style in segments:
                 if is_default_run(fg, bg, style):
@@ -398,7 +416,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
                 scope = scope_of(fg, bg, style)
                 grouped.setdefault(scope, []).append(sublime.Region(start + a, start + b))
 
-        scopes = self._archived_chunks.setdefault(chunk, set())
+        scopes = self.state.archived_chunks.setdefault(chunk, set())
         for scope, regions in grouped.items():
             key = chunk_key(chunk, scope)
             if scope in scopes:
@@ -431,7 +449,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         while row > cursor_row:
             line_region = view.line(view.text_point(row, 0))
             text = view.substr(line_region)
-            if len(text.strip()) == 0 and (row not in self.colored_lines or not self.colored_lines[row]):
+            if len(text.strip()) == 0 and (row not in self.state.colored_lines or not self.state.colored_lines[row]):
                 row = row - 1
             else:
                 break
@@ -445,7 +463,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             trailing_region = sublime.Region(line_region.begin() + rev_wcwidth(text, cursor.x) + 1, line_region.end())
             if not trailing_region.empty() and len(view.substr(trailing_region).strip()) == 0:
                 view.erase(edit, trailing_region)
-                self._row_cache.pop(row, None)
+                self.state.row_cache.pop(row, None)
 
     def trim_history(self, edit, terminal):
         """Hold the view to scrollback_size rows, and drop rows below the screen."""
@@ -459,8 +477,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             m = max(lastrow + 1 - n, math.ceil(n / 10))
             for line in range(m):
                 self.decolorize_line(line)
-            self.colored_lines = {k - m: v for (k, v) in self.colored_lines.items()}
-            self._row_cache = {k - m: v for (k, v) in self._row_cache.items() if k >= m}
+            self.state.colored_lines = {k - m: v for (k, v) in self.state.colored_lines.items()}
+            self.state.row_cache = {k - m: v for (k, v) in self.state.row_cache.items() if k >= m}
             top_region = sublime.Region(0, view.full_line(view.text_point(m - 1, 0)).end())
             view.erase(edit, top_region)
             terminal.offset -= m
@@ -468,12 +486,12 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
 
             # chunks wholly above the cut go; the boundary chunk drops the
             # regions the erase collapsed to empty
-            self._trimmed += m
-            cut = self._trimmed // CHUNK
-            for chunk in [c for c in self._archived_chunks if c < cut]:
-                for scope in self._archived_chunks.pop(chunk):
+            self.state.trimmed += m
+            cut = self.state.trimmed // CHUNK
+            for chunk in [c for c in self.state.archived_chunks if c < cut]:
+                for scope in self.state.archived_chunks.pop(chunk):
                     view.erase_regions(chunk_key(chunk, scope))
-            for scope in self._archived_chunks.get(cut, ()):
+            for scope in self.state.archived_chunks.get(cut, ()):
                 key = chunk_key(cut, scope)
                 view.add_regions(key, [r for r in view.get_regions(key) if not r.empty()], scope)
 
@@ -482,7 +500,7 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
             for line in view.lines(tail_region):
                 row = view.rowcol(line.begin())[0]
                 self.decolorize_line(row)
-                self._row_cache.pop(row, None)
+                self.state.row_cache.pop(row, None)
             view.erase(edit, tail_region)
 
 
