@@ -13,6 +13,8 @@ from .utils import settings
 # SGR button numbers for the wheel; 64 is the "scroll" bit plus direction
 WHEEL_UP = 64
 WHEEL_DOWN = 65
+# button 0 with the "moved while held" bit
+MOTION = 32
 
 
 def send_scroll(terminal, up, lines, cell=None):
@@ -36,7 +38,7 @@ def _event_to_cell(view, terminal, event, clamp=False):
     """Map a mouse event to 1-based (col, row) on the live screen, or None.
 
     Clamping pulls a point above or below the screen onto the nearest row: the
-    wheel still belongs to the app there, a click does not."""
+    wheel and a release still belong to the app there, a press does not."""
     pt = view.window_to_text((event["x"], event["y"]))
     row, col = view.rowcol(pt)
     row -= terminal.offset
@@ -48,43 +50,57 @@ def _event_to_cell(view, terminal, event, clamp=False):
     return (min(col, screen.columns - 1) + 1, row + 1)
 
 
-class VtermMouseEventListener(sublime_plugin.EventListener):
-    """Hands button-1 clicks to the app, but only while it tracks the mouse."""
-
-    def on_text_command(self, view, name, args):
-        """Replace drag_select with a mouse report; other click variants stay native."""
-        terminal = Terminal.from_id(view.id())
-        if not terminal:
-            return
-        if not terminal.screen.mouse_reporting_enabled():
-            # leave selection, caret and scrolling to sublime
-            return
-        if name == "drag_select" and args and args.get("event", {}).get("button") == 1 and len(args) == 1:
-            return ("vterm_mouse_click", {"event": args["event"]})
-
-
-class VtermMouseClickCommand(sublime_plugin.TextCommand):
-    """Reports a click to the app, or focuses the tab if it was not active."""
+class VtermMousePressCommand(sublime_plugin.TextCommand):
+    """Bound to button 1 in the mousemap while the app tracks the mouse."""
 
     def run(self, edit, event):
-        """Focus the tab on the first click, report press and release after that."""
+        """Focus an inactive tab; else report the press and remember its cell."""
         terminal = Terminal.from_id(self.view.id())
         if not terminal:
             return
+        terminal.mouse_press = None  # a release may not come: the context can drop mid-drag
         window = self.view.window()
         if window and window.active_view() != self.view:
-            # we replaced drag_select, which is what focuses the group; this
-            # click only focuses, as clicking an unfocused terminal window does
+            # the mousemap binding displaces drag_select, which is what focuses
+            # the group; this click only focuses, as in a terminal window
             window.focus_view(self.view)
             return
         cell = _event_to_cell(self.view, terminal, event)
         if cell is None:
             return
+        terminal.mouse_press = cell
         terminal.send_mouse(0, cell[0], cell[1], pressed=True)
-        terminal.send_mouse(0, cell[0], cell[1], pressed=False)
+        # native drag_select only previews the selection while dragging; the
+        # app gets the real one at release
+        self.view.run_command("drag_select", {"event": event})
 
     def want_event(self):
         """Ask sublime for the click coordinates."""
+        return True
+
+
+class VtermMouseReleaseCommand(sublime_plugin.TextCommand):
+    """Reports the release, after one drag motion when the button came up elsewhere.
+
+    Sublime raises no motion events, so a drag reaches the app as a single
+    move to the release cell; an app's selection then spans press to release.
+    The native preview selection goes, leaving the app's own highlight."""
+
+    def run(self, edit, event):
+        """Report motion and release for the pending press, if any."""
+        terminal = Terminal.from_id(self.view.id())
+        if not terminal or terminal.mouse_press is None:
+            return
+        cell = _event_to_cell(self.view, terminal, event, clamp=True)
+        if cell != terminal.mouse_press:
+            terminal.send_mouse(MOTION, cell[0], cell[1], pressed=True)
+        terminal.send_mouse(0, cell[0], cell[1], pressed=False)
+        terminal.mouse_press = None
+        self.view.sel().clear()
+        self.view.run_command("vterm_show_cursor", {"scroll": False})
+
+    def want_event(self):
+        """Ask sublime for the release coordinates."""
         return True
 
 

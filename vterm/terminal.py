@@ -121,6 +121,8 @@ class Terminal:
         # guards the queue/flag handoff between send_string and the drain thread
         self._send_lock = threading.Lock()
         self._wheel_captured = False
+        self._mouse_reporting = False
+        self.mouse_press = None  # cell of the pending button-1 press, for the release report
         self._scroll_pending = False
         self.pending_clear = False
         self.pending_clear_screen = False
@@ -329,7 +331,7 @@ class Terminal:
                             if frames >= UNDO_CLEAR_FRAMES:
                                 frames = 0
                                 self.view.run_command("vterm_clear_undo_stack")
-                    self._sync_wheel_flag()
+                    self._sync_mouse_flags()
                     if done[0] or not self.is_hosted():
                         LOG.debug("[renderer] stops")
                         break
@@ -425,12 +427,16 @@ class Terminal:
                 continue
             self.process.write(string)
 
-    def _sync_wheel_flag(self):
-        """Publish whether the app owns the wheel, for the mousemap context."""
-        captured = self.screen.mouse_reporting_enabled() or self.screen.alternate_buffer_mode
+    def _sync_mouse_flags(self):
+        """Publish whether the app owns the wheel and the mouse, for the mousemap contexts."""
+        reporting = self.screen.mouse_reporting_enabled()
+        captured = reporting or self.screen.alternate_buffer_mode
         if captured != self._wheel_captured:
             self._wheel_captured = captured
             self.view.settings().set("vterm_view.wheel_captured", captured)
+        if reporting != self._mouse_reporting:
+            self._mouse_reporting = reporting
+            self.view.settings().set("vterm_view.mouse_reporting", reporting)
 
     def send_focus(self, focused):
         """Report focus gain or loss, when the app asked for it (?1004)."""

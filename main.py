@@ -26,8 +26,8 @@ from .vterm.commands import (
 )
 from .vterm.listeners import VtermCoreEventListener
 from .vterm.mouse import (
-    VtermMouseClickCommand,
-    VtermMouseEventListener,
+    VtermMousePressCommand,
+    VtermMouseReleaseCommand,
     VtermScrollCommand,
 )
 from .vterm.scheme import build_startup_schemes

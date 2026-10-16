@@ -9,7 +9,7 @@ from _bootstrap import FakeProcess
 import sublime
 from vterm.commands import VtermKeypressCommand
 from vterm.emulator import VtScreen, VtStream
-from vterm.mouse import VtermMouseClickCommand, VtermScrollCommand
+from vterm.mouse import VtermMousePressCommand, VtermMouseReleaseCommand, VtermScrollCommand
 from vterm.render import (
     CHUNK,
     RenderState,
@@ -626,19 +626,31 @@ terminal.view.window_to_text = lambda xy: 0
 window = FakeWindow(active=object())
 terminal.view.window = lambda: window
 stream.feed("\x1b[?1002h\x1b[?1006h")
-click = VtermMouseClickCommand.__new__(VtermMouseClickCommand)
-click.view = terminal.view
+mouse_press = VtermMousePressCommand.__new__(VtermMousePressCommand)
+mouse_press.view = terminal.view
+mouse_release = VtermMouseReleaseCommand.__new__(VtermMouseReleaseCommand)
+mouse_release.view = terminal.view
 event = {"x": 0, "y": 0, "button": 1}
 
-click.run(None, event)
+mouse_press.run(None, event)
 assert window.active_view() is terminal.view, "click did not focus the tab"
+mouse_release.run(None, event)
 assert terminal.process.written == "", repr(terminal.process.written)
 
-# once focused, the same click reports as before
-click.run(None, event)
+# once focused, press and release at one cell report a click
+mouse_press.run(None, event)
+mouse_release.run(None, event)
 assert terminal.process.written == "\x1b[<0;1;1M\x1b[<0;1;1m", repr(terminal.process.written)
 
-print("click focus tests passed (first click focuses only, then reports)")
+# a release elsewhere reports one drag motion first
+terminal.process.writes.clear()
+terminal.view.text = "r0    \nr1    \nr2    \nr3    \nr4    \n"
+mouse_press.run(None, event)
+terminal.view.window_to_text = lambda xy: terminal.view.text_point(2, 4)
+mouse_release.run(None, event)
+assert terminal.process.written == "\x1b[<0;1;1M\x1b[<32;5;3M\x1b[<0;5;3m", repr(terminal.process.written)
+
+print("click tests passed (first click focuses only; press, drag and release report)")
 
 
 # entering the alt screen folds the scrollback away (kitty hides it); leaving

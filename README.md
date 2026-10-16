@@ -79,10 +79,11 @@ or turns it off. Copy/paste use the normal Sublime keys, and pastes are
 bracketed when the app asks for it. Copying re-joins soft-wrapped lines. The
 middle button pastes the current selection straight into the app, X11-style,
 without going near the clipboard; it does nothing when nothing is selected. The
-wheel scrolls the view normally; while the app tracks the mouse the wheel and
-left click go to it instead, and on the alternate screen without tracking each
-wheel tick sends arrow keys (alternate scroll, as kitty/iTerm2 do — this is
-what scrolls Claude Code's fullscreen UI before it enables mouse reporting).
+wheel scrolls the view normally; while the app tracks the mouse the wheel, clicks
+and drags go to it instead (Claude Code's own mouse selection and copy work as in
+kitty), and on the alternate screen without tracking each wheel tick sends arrow
+keys (alternate scroll, as kitty/iTerm2 do — this is what scrolls Claude Code's
+fullscreen UI before it enables mouse reporting).
 Sublime raises no wheel event at all for the trackpad (sublime_text#1838): set
 a utility such as [LinearMouse](https://linearmouse.app/) to discrete scrolling
 for Sublime Text and it arrives as wheel notches like any other. A notch sends the
@@ -149,15 +150,16 @@ terminal protocols — see `Architecture.md`.
   into the view: an app that does not echo (vim in normal mode) would otherwise
   leave the character behind. `on_modified` in `vterm/listeners.py` remains the
   fallback for IME and composed input.
-- `vterm/mouse.py` — SGR mouse reporting (wheel, click) when the app enables
+- `vterm/mouse.py` — SGR mouse reporting (wheel, click, drag) when the app enables
   tracking; native selection and scrolling otherwise. The trackpad is not
   handled: it reaches no mousemap on macOS and is converted to wheel notches
   outside the plugin.
 
 Supported: alt screen (1049), synchronized output (2026), bracketed paste (2004),
-mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left click are reported; no
-drag, no right button; the middle button pastes the selection instead of being
-reported), focus events (1004),
+mouse tracking 1000/1002/1003 + SGR 1006 (wheel and left button are reported; a
+drag arrives as one motion at release, since Sublime raises none; no right
+button; the middle button pastes the selection instead of being reported),
+focus events (1004),
 xterm modifyOtherKeys (`CSI > 4 ; n m`, for the modified keys with no
 unambiguous legacy encoding: enter, tab, backspace, space), cursor styles (DECSCUSR —
 block/bar and blink/steady via the view's caret settings; underline falls back

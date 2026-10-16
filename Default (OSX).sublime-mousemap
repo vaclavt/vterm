@@ -12,6 +12,13 @@
         "context": [{"key": "vterm_view.wheel_captured", "operand": true}]
     },
     {
+        // press reports the click, release reports the drag
+        "button": "button1",
+        "press_command": "vterm_mouse_press",
+        "command": "vterm_mouse_release",
+        "context": [{"key": "vterm_view.mouse_reporting", "operand": true}]
+    },
+    {
         // press_command: sublime's own button3 binding is a column drag_select,
         // which would clear the selection before a release command could read it
         "button": "button3",

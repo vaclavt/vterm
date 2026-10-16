@@ -75,10 +75,9 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
 | `vterm_cleanup` | `VtermCleanupCommand` | renderer, on process exit |
 | `vterm_close` | `VtermCloseCommand` | nothing — available for a user keybinding |
 | `vterm_clear_undo_stack` / `vterm_noop` | `commands.py` | internal |
-| `vterm_scroll` / `vterm_mouse_click` | `mouse.py` | mousemap, `drag_select` interception |
+| `vterm_scroll` / `vterm_mouse_press` / `vterm_mouse_release` | `mouse.py` | mousemap |
 
-Two application-wide `EventListener`s: `VtermCoreEventListener` (`listeners.py`) and
-`VtermMouseEventListener` (`mouse.py`).
+One application-wide `EventListener`: `VtermCoreEventListener` (`listeners.py`).
 
 
 ---

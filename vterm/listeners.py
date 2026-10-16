@@ -88,7 +88,7 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
         """Answer the contexts the mousemap needs"""
         # keymap contexts are native "setting.x"; mousemaps do not evaluate
         # those the same way, so their flags still need the hook
-        if key not in ("vterm_view", "vterm_view.wheel_captured"):
+        if key not in ("vterm_view", "vterm_view.wheel_captured", "vterm_view.mouse_reporting"):
             return None
         value = view.settings().get(key, False)
         if operator == sublime.OP_EQUAL:
