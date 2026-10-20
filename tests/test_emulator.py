@@ -141,6 +141,11 @@ def run_case(char_by_char):
     assert len(screen.history) == 1, (tag, len(screen.history))
     assert screen.history[0][0].data == "a", tag
 
+    # an explicit full-screen scroll region still feeds scrollback
+    proc, screen, stream = make(10, 3)
+    feed(stream, "\x1b[1;3ra\r\nb\r\nc\r\nd", char_by_char)
+    assert len(screen.history) == 1, (tag, len(screen.history))
+
     # ED 3 clears history and fires callback
     cleared = []
     proc = FakeProcess()

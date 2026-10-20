@@ -442,7 +442,9 @@ class VtScreen(pyte.Screen):
 
     def index(self):
         """Line feed; at the bottom of the primary screen the top row goes to scrollback."""
-        if not self.alternate_buffer_mode and self.cursor.y == self.lines - 1 and self.margins is None:
+        # a region spanning the whole screen (CSI 1;<lines> r) is no region
+        full = self.margins is None or self.margins == (0, self.lines - 1)
+        if not self.alternate_buffer_mode and self.cursor.y == self.lines - 1 and full:
             self.push_lines_into_history(1)
         super().index()
 
