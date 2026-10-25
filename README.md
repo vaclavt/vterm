@@ -126,7 +126,8 @@ terminal protocols — see `Architecture.md`.
   multi-digit OSC. It answers DA1 (Claude Code's query sentinel, which has no
   timeout) and DA2, CPR, XTVERSION + DECRQM 2026 (this is what unlocks Claude
   Code's flicker-free synchronized output on a generic `TERM`), the kitty keyboard
-  probe, and OSC 10/11 colour queries; OSC 52 goes to the Sublime clipboard.
+  probe, and OSC 10/11 colour queries; OSC 52 (clipboard write) is ignored,
+  since any output could plant a command to paste.
   Combining characters are merged as NFC, because Sublime draws decomposed
   sequences badly.
 - `vterm/terminal.py` — pty process, reader and renderer threads at ~33 Hz.
@@ -209,6 +210,6 @@ python3 benchmarks/profiling.py           # feed-path hotspots, per-char micro-b
 `harness_live.py` is the useful one: it drives a real `pi` or `claude` through the
 emulator with no Sublime involved, and prints the queries answered plus the
 resulting screen. Tests import pyte/ptyprocess/wcwidth from Sublime's
-`Lib/python38` (pure Python, so any Python 3 runs them).
+`Lib/python3*` (pure Python, so any Python 3 runs them).
 
 Code style is in `CODE.md`, working agreements in `CLAUDE.md`.

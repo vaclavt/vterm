@@ -1,5 +1,4 @@
 """ Terminal emulation: the screen and a parser for prefixed CSI, DECRQM and multi-digit OSC """
-import base64
 import logging
 import re
 import time
@@ -119,7 +118,7 @@ class Cursor:
 
 class VtScreen(pyte.Screen):
     """Screen with alternate buffer, scrollback, synchronized output,
-    mouse/focus/paste modes, cursor styles, query replies and OSC handling.
+    mouse/focus/paste modes, cursor styles, query replies and OSC titles/colours.
 
     Mutated only by the renderer thread, so it carries no lock.
     """
@@ -137,7 +136,6 @@ class VtScreen(pyte.Screen):
         history=5000,
         erase_scrollback=True,
         clear_callback=lambda: None,
-        clipboard_callback=lambda text: None,
         fg_color="ffffff",
         bg_color="000000",
         is_dark=True,
@@ -146,7 +144,6 @@ class VtScreen(pyte.Screen):
         self._process = process
         self._erase_scrollback = erase_scrollback
         self._clear_callback = clear_callback
-        self._clipboard_callback = clipboard_callback
         self.primary_buffer = {}
         self._default_char = Char(data=" ", fg="default", bg="default", reverse=False)
         # SGR transitions repeat endlessly in TUI output; memoized per (attrs, params)
@@ -650,7 +647,7 @@ class VtScreen(pyte.Screen):
         self.write_process_input("\x1b[?0u")
 
     def handle_osc(self, code, payload, terminator):
-        """Dispatch an OSC: 0/2 title, 1 icon, 10/11 colour query, 52 clipboard."""
+        """Dispatch an OSC: 0/2 title, 1 icon, 10/11 colour query."""
         if code in (0, 2):
             self.set_title(payload)
         elif code == 1:
@@ -661,14 +658,8 @@ class VtScreen(pyte.Screen):
                 rgb = "rgb:{0}{0}/{1}{1}/{2}{2}".format(color[0:2], color[2:4], color[4:6])
                 # answer with the terminator asked with: meli only ends an OSC at ST
                 self.write_process_input("\x1b]{};{}{}".format(code, rgb, terminator))
-        elif code == 52:
-            parts = payload.split(";", 1)
-            if len(parts) == 2 and parts[1] and parts[1] != "?":
-                try:
-                    self._clipboard_callback(base64.b64decode(parts[1]).decode("utf-8", "replace"))
-                except ValueError:
-                    LOG.warning("osc52: undecodable payload", exc_info=True)
-        # other OSC codes are intentionally dropped
+        # other OSC codes are intentionally dropped, 52 (clipboard write) among
+        # them: any output, cat'd or remote, could plant a command to paste
 
 
 # a complete plain CSI: params then a final byte. No private marker, prefix or

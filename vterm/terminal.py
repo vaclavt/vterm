@@ -26,6 +26,9 @@ UNFOCUSED_RENDER_PERIOD = 0.075
 # max chars parsed per tick, so a giant burst still renders intermediate frames.
 FEED_LIMIT = 48 * 1024
 
+# unparsed 8K reads the reader may hold before it pauses: ~10 ticks of parsing
+PENDING_CHUNKS = 64
+
 # SUPPRESS_HISTORY_AFTER_CLEAR in emulator.py must outlast this
 REPAINT_NUDGE_DELAY = 0.25
 
@@ -200,7 +203,6 @@ class Terminal:
             history=self.scrollback_size,
             erase_scrollback=settings().get("honor_erase_scrollback", False),
             clear_callback=self._clear_callback,
-            clipboard_callback=self._clipboard_callback,
             fg_color=self.scheme.foreground.lstrip("#"),
             bg_color=self.scheme.background.lstrip("#"),
             is_dark=self.scheme.is_dark(),
@@ -233,7 +235,8 @@ class Terminal:
         self.alive = False
         self._wake.set()
         try:
-            self.process.terminate()
+            # force: a child ignoring HUP and INT would otherwise outlive the tab
+            self.process.terminate(force=True)
         except Exception:
             LOG.warning("terminate failed", exc_info=True)
         vid = self.view.id()
@@ -243,10 +246,6 @@ class Terminal:
     def _clear_callback(self):
         """Screen asked for a clear; the next render performs it on the UI thread."""
         self.pending_clear = True
-
-    def _clipboard_callback(self, text):
-        """OSC 52 payload; the clipboard may only be touched on the UI thread."""
-        sublime.set_timeout(lambda: sublime.set_clipboard(text))
 
     def _need_to_render(self):
         """Whether anything changed since the last frame: dirty rows, a clear, or the cursor."""
@@ -283,6 +282,10 @@ class Terminal:
                     break
                 chunks.append(self._decoder.decode(raw))
                 self._wake.set()
+                # backpressure: once this much waits unparsed, stop reading so
+                # the pty fills and the child blocks, as under a real terminal
+                while len(chunks) > PENDING_CHUNKS and not done[0] and self.is_hosted():
+                    time.sleep(RENDER_PERIOD)
                 if done[0] or not self.is_hosted():
                     LOG.debug("[reader] stops")
                     break

@@ -83,13 +83,11 @@ def run_case(char_by_char):
     assert proc.written == "\x1b]11;rgb:1a1a/2b2b/3c3c\x1b\\", (tag, proc.written)
     assert screen.buffer[0][0].data == "y", tag
 
-    # OSC 52 clipboard (base64 "hi")
-    got = []
-    proc = FakeProcess()
-    screen = VtScreen(80, 24, process=proc, clipboard_callback=got.append)
-    stream = VtStream(screen)
-    feed(stream, "\x1b]52;c;aGk=\x07", char_by_char)
-    assert got == ["hi"], (tag, got)
+    # OSC 52 (clipboard write) is dropped, not drawn: untrusted output must
+    # not plant a paste
+    proc, screen, stream = make()
+    feed(stream, "\x1b]52;c;aGk=\x07z", char_by_char)
+    assert screen.buffer[0][0].data == "z" and proc.written == "", tag
 
     # bracketed paste and sync modes tracked
     proc, screen, stream = make()

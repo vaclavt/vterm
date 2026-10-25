@@ -100,7 +100,8 @@ are marked ✅.
   truecolor, `ESC[0m` reset. This is what TUIs emit most.
 - **OSC** ✅ — Operating System Command, `ESC ]`, ending at BEL or ST. Carries strings
   rather than numbers: `OSC 0/2` set the window title, `OSC 10/11` query the default
-  foreground/background, `OSC 52` reads or writes the system clipboard.
+  foreground/background, `OSC 52` reads or writes the system clipboard (vterm
+  ignores it: untrusted output must not plant a paste).
 - **DCS / APC** — Device Control String (`ESC P`) and Application Program Command
   (`ESC _`). Long payloads: sixel images, kitty graphics. vterm parses their framing and
   discards the payload, so an image never leaks into the text.

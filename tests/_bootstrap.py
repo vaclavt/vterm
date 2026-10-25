@@ -3,14 +3,16 @@
 They run as plain scripts (see README), so each imports this first to get the
 sublime stubs and the Package Control libraries on the path.
 """
+import glob
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ST_LIB = os.path.expanduser(
-    "~/Library/Application Support/Sublime Text/Lib/python38")
+# Package Control puts the libraries under the plugin host's own directory
+ST_LIBS = sorted(glob.glob(os.path.expanduser(
+    "~/Library/Application Support/Sublime Text/Lib/python3*")))
 
-for path in (ROOT, ST_LIB, os.path.join(ROOT, "tests", "stubs")):
+for path in [ROOT] + ST_LIBS + [os.path.join(ROOT, "tests", "stubs")]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
