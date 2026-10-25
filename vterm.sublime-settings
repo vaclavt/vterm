@@ -33,12 +33,12 @@
 
     // External terminal for "vterm: Open Terminal in Project Folder".
     // %CWD% in parameters is replaced with the project folder.
-    "terminal": "/usr/bin/open",
-    "parameters": ["-a", "Terminal", "%CWD%"],
+    // "terminal": "/usr/bin/open",
+    // "parameters": ["-a", "Terminal", "%CWD%"],
 
     // kitty instead of Apple Terminal:
-    // "terminal": "/opt/homebrew/bin/kitty",
-    // "parameters": ["-d", "%CWD%"],
+    "terminal": "/usr/bin/open",
+    "parameters": ["-a", "Kitty", "%CWD%"],
 
     "debug": false
 }
