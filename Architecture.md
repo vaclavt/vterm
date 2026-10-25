@@ -11,7 +11,7 @@
 | `vterm/render.py` | Screen → view text, colour overlays, caret, folding, trimming. |
 | `vterm/scheme.py` | `SchemeManager`: generates one theme's colour scheme, the scopes the renderer paints with. `get_scheme_manager` caches one instance per theme name, each terminal frozen to the instance it was opened or rethemed with. |
 | `vterm/themes.py` | The built-in palettes (`default`, `homebrew`, `pro`, `slate`, `red-alert`). |
-| `vterm/commands.py` | The Sublime commands: open, keypress, copy/paste, theme picker, clear, cleanup, close. |
+| `vterm/commands.py` | The Sublime commands: open, keypress, copy/paste, theme picker, clear, cleanup. |
 | `vterm/listeners.py` | `VtermCoreEventListener`: focus, IME capture, copy/paste rerouting, the mousemap context. |
 | `vterm/mouse.py` | Wheel and click handling. |
 | `vterm/keys.py` | Key name + modifiers → escape sequence tables. |
@@ -21,14 +21,15 @@
 
 | File | Role |
 |---|---|
-| `vterm.sublime-settings` | Defaults for the eleven plugin settings. |
+| `vterm.sublime-settings` | Defaults for the twelve plugin settings. |
 | `vterm.sublime-commands` | Four palette entries: open, open terminal in project folder, clear screen, select theme. |
 | `vterm.sublime-syntax` | An intentionally empty hidden syntax, so terminal text is never tokenized. |
 | `Default.sublime-keymap` | 245 generated bindings. **Do not edit by hand** — regenerate with `tools/gen_keymap.py`. |
 | `Default (OSX).sublime-mousemap` | Two wheel bindings and the middle button. |
 | `dependencies.json` | Package Control libraries. |
 
-Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-scheme`.
+Generated at runtime, not in the repo: `Packages/User/vterm/vterm-<theme>.hidden-color-scheme`,
+one per theme (`vterm-system` for "no theme").
 
 ## Classes
 
@@ -50,8 +51,8 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
   into the next one. Parity is enforced by a differential test (`run_fast_path_cases`).
 - **`Cursor`** (`emulator.py`) — replaces pyte's so the default attribute set can be a
   `Char` carrying the extra `linefeed` field.
-- **`SchemeManager`** (`scheme.py`) — module singleton `scheme_manager`. Owns the
-  generated scheme file and the mapping from colour combination to scope name.
+- **`SchemeManager`** (`scheme.py`) — one per theme name, cached by `get_scheme_manager`.
+  Owns the generated scheme file and the mapping from colour combination to scope name.
 - **`VtermRenderCommand`** (`render.py`) — the per-frame logic. Sublime rebuilds every
   `TextCommand` instance whenever any plugin loads, so the view's render state
   (`RenderState`: `colored_lines`, `row_cache`, `key_counter`, the scrollback chunk
@@ -68,12 +69,11 @@ Generated at runtime, not in the repo: `Packages/User/vterm/vterm.hidden-color-s
 | `vterm_keypress` | `VtermKeypressCommand` | 244 keymap bindings |
 | `vterm_render` | `VtermRenderCommand` | renderer thread |
 | `vterm_show_cursor` | `VtermShowCursorCommand` | internal |
-| `vterm_copy` / `vterm_paste` / `vterm_paste_text` | `commands.py` | `on_text_command`, IME capture |
+| `vterm_copy` / `vterm_paste_text` | `commands.py` | `on_text_command`, IME capture |
 | `vterm_paste_selection` | `commands.py` | mousemap, middle button |
 | `vterm_select_theme` | `VtermSelectThemeCommand` | palette |
 | `vterm_clear_screen` | `VtermClearScreenCommand` | palette, `super+shift+k` |
 | `vterm_cleanup` | `VtermCleanupCommand` | renderer, on process exit |
-| `vterm_close` | `VtermCloseCommand` | nothing — available for a user keybinding |
 | `vterm_clear_undo_stack` / `vterm_noop` | `commands.py` | internal |
 | `vterm_scroll` / `vterm_mouse_press` / `vterm_mouse_release` | `mouse.py` | mousemap |
 

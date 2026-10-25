@@ -455,6 +455,8 @@ Terminal._terminals[id(terminal)] = terminal
 terminal.view.id = lambda: id(terminal)
 scroll = VtermScrollCommand.__new__(VtermScrollCommand)
 scroll.view = terminal.view
+# three per notch, so "one report per line" is visible
+sublime.load_settings(SETTINGS_FILE).set("wheel_lines", 3)
 
 stream.feed("\x1b[?1049h")
 scroll.run(None, up=True)

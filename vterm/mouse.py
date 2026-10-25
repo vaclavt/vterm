@@ -119,7 +119,7 @@ class VtermScrollCommand(sublime_plugin.TextCommand):
         cell = None
         if terminal.screen.mouse_reporting_enabled() and event:
             cell = _event_to_cell(self.view, terminal, event, clamp=True)
-        lines = max(0, int(settings().get("wheel_lines", 3)))
+        lines = max(0, int(settings().get("wheel_lines", 1)))
         send_scroll(terminal, up, lines, cell)
 
     def want_event(self):

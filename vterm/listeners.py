@@ -104,6 +104,6 @@ class VtermCoreEventListener(sublime_plugin.EventListener):
         if name == "copy":
             return ("vterm_copy", None)
         elif name in ("paste", "paste_and_indent"):
-            return ("vterm_paste", None)
+            return ("vterm_paste_text", {"text": sublime.get_clipboard()})
         elif name == "undo":
             return ("vterm_noop", None)

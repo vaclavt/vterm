@@ -60,6 +60,7 @@ class VtermOpenCommand(sublime_plugin.WindowCommand):
         except Exception:
             LOG.exception("failed to start terminal: cmd=%s", cmd)
             view.close()
+            sublime.error_message("vterm: could not start {}".format(" ".join(cmd)))
             return
         window.focus_view(view)
 
@@ -187,14 +188,6 @@ class VtermCopyCommand(sublime_plugin.TextCommand):
         if not self.view.settings().get("vterm_view"):
             return
         sublime.set_clipboard(selection_text(self.view))
-
-
-class VtermPasteCommand(sublime_plugin.TextCommand):
-    """Pastes the clipboard into the app; replaces sublime's own paste."""
-
-    def run(self, edit):
-        """Hand the clipboard to vterm_paste_text."""
-        self.view.run_command("vterm_paste_text", {"text": sublime.get_clipboard()})
 
 
 class VtermPasteTextCommand(sublime_plugin.TextCommand):
@@ -332,20 +325,6 @@ class VtermCleanupCommand(sublime_plugin.TextCommand):
         if exitstatus is not None:
             view.run_command("append", {"characters": "\n[process exited with code {}]".format(exitstatus)})
         view.sel().clear()
-
-
-class VtermCloseCommand(sublime_plugin.TextCommand):
-    """Kills the process and closes the tab. Registered but bound nowhere; for user keybindings."""
-
-    def run(self, _):
-        """Kill the process, then close the view."""
-        view = self.view
-        if not view.settings().get("vterm_view"):
-            return
-        terminal = Terminal.from_id(view.id())
-        if terminal:
-            terminal.kill()
-        view.close()
 
 
 class VtermClearUndoStackCommand(sublime_plugin.TextCommand):
