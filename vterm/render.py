@@ -470,7 +470,8 @@ class VtermRenderCommand(sublime_plugin.TextCommand):
         view = self.view
         screen = terminal.screen
         lastrow = view.rowcol(view.size())[0]
-        n = terminal.scrollback_size
+        # the setting counts rows above the screen; 0 keeps the screen alone
+        n = terminal.scrollback_size + screen.lines
         if lastrow + 1 > n:
             # queued rows are about to be renumbered or erased: merge them first
             self.flush_chunk()

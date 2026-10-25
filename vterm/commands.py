@@ -18,6 +18,12 @@ LOG = logging.getLogger(__name__)
 SCROLL_KEYS = ("pageup", "pagedown", "up", "down")
 
 
+def editor_view(window):
+    """A view to sample the editor's colours from: never a terminal, whose
+    colours are its own theme's."""
+    return next((v for v in window.views() if not v.settings().get("vterm_view")), None)
+
+
 class VtermOpenCommand(sublime_plugin.WindowCommand):
     """Open a terminal in a new tab. `vterm_open`, the only entry point users bind."""
 
@@ -43,7 +49,7 @@ class VtermOpenCommand(sublime_plugin.WindowCommand):
                 cwd = os.path.expanduser("~")
         cwd = sublime.expand_variables(cwd, window.extract_variables())
 
-        scheme = get_scheme_manager(settings().get("theme"), host_view=window.active_view())
+        scheme = get_scheme_manager(settings().get("theme"), host_view=editor_view(window))
 
         view = window.new_file()
         view.run_command("vterm_initialize_view", {"color_scheme": scheme.path})
@@ -258,7 +264,7 @@ class VtermSelectThemeCommand(sublime_plugin.WindowCommand):
 
     def _apply(self, name):
         """Retheme the focused terminal alone."""
-        scheme = get_scheme_manager(name, host_view=self.terminal.view)
+        scheme = get_scheme_manager(name, host_view=editor_view(self.window))
         self.terminal.retheme(scheme)
 
     def _preview(self, index):

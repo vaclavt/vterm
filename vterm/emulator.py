@@ -83,7 +83,8 @@ def quantize_256(r, g, b):
     if r == g == b:
         if r < 8:
             return 16
-        if r > 248:
+        # 238 is the top of the grey ramp (255); above the midpoint, white
+        if r > 246:
             return 231
         return 232 + (r - 8) // 10
 
@@ -432,7 +433,8 @@ class VtScreen(pyte.Screen):
                     self.buffer[pos[0]][pos[1]] = last._replace(data=normalized)
                     self.dirty.add(pos[0])
             else:
-                break
+                # other zero-width (VS16, ZWJ) or control: drop it, keep the rest
+                continue
 
             if char_width > 0:
                 x = cursor.x + char_width

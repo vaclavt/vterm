@@ -119,6 +119,21 @@ def run_case(char_by_char):
     assert screen.buffer[0][0].fg == "ff0000" and screen.buffer[0][0].bold, tag
     assert screen.buffer[0][1].fg == "ff0000", (tag, screen.buffer[0][1].fg)
 
+    # every grey lands inside the palette; 248 used to map to slot 256 and
+    # abort the whole SGR
+    from vterm.emulator import quantize_256
+    assert all(0 <= quantize_256(v, v, v) <= 255 for v in range(256))
+    proc, screen, stream = make()
+    feed(stream, "\x1b[38;2;248;248;248mX", char_by_char)
+    assert screen.buffer[0][0].fg == "ffffff", (tag, screen.buffer[0][0].fg)
+
+    # a zero-width non-combining char (VS16, ZWJ) or a stray control byte is
+    # dropped; the text after it must survive
+    proc, screen, stream = make()
+    feed(stream, "⚠️ warn \U0001F468‍\U0001F4BB ab\x01cd", char_by_char)
+    row = "".join(screen.buffer[0][x].data for x in range(20)).rstrip()
+    assert row == "⚠ warn \U0001F468\U0001F4BB abcd", (tag, repr(row))
+
     # SGR 5/25 (blink): ignored, not a crash — Char has no blink field
     proc, screen, stream = make()
     feed(stream, "\x1b[5;31mX\x1b[25mY", char_by_char)
@@ -315,7 +330,7 @@ GAUNTLET = (
     "\x1b[2;5r\x1b[Sscrolled\x1b[T\x1b[r"
     "\x1b[38:5:100mcolon\x1b[m\r\n"
     "\x1b[2\x073m bel mid-CSI \x1b[3\x18X can cancels\r\n"
-    "wide: 漢字 \x1b[7m漢\x1b[m\r\n"
+    "wide: 漢字 \x1b[7m漢\x1b[m ⚠️ after\r\n"
     "\x1b[m\x1b[;5m\x1b[5;m\x1b[25m params\r\n"
 )
 

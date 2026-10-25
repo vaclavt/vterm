@@ -25,6 +25,7 @@ class FakeTerminalView:
         self._id = FakeTerminalView._next_id
         FakeTerminalView._next_id += 1
         self._settings = sublime.Settings()
+        self._settings.set("vterm_view", True)
 
     def id(self):
         return self._id
@@ -36,7 +37,24 @@ class FakeTerminalView:
         return True
 
     def style(self):
-        return {}
+        # a terminal view reports its own theme's colours, not the editor's
+        return {"foreground": "#f2f2f2", "background": "#000000"}
+
+
+class FakeEditorView:
+    """An ordinary file view, the one the "No theme" palette is sampled from."""
+
+    def settings(self):
+        return sublime.Settings()
+
+    def is_valid(self):
+        return True
+
+    def style(self):
+        return {"foreground": "#111111", "background": "#eeeeee"}
+
+
+editor = FakeEditorView()
 
 
 class FakeWindow:
@@ -45,6 +63,9 @@ class FakeWindow:
 
     def active_view(self):
         return self._view
+
+    def views(self):
+        return [self._view, editor]
 
     def show_quick_panel(self, items, on_done, selected_index=-1, on_highlight=None):
         panel.update(items=items, on_done=on_done,
@@ -104,6 +125,12 @@ assert other.scheme.theme_name == "default", "another open terminal must not ret
 command = open_picker(fake_terminal("slate"))
 panel["on_done"](0)
 assert settings.get("theme") is None, settings.get("theme")
+
+# ... and samples the editor's colours, not the themed terminal's own: that
+# would retint every "no theme" terminal with the theme being left
+system = get_scheme_manager(None)
+assert (system.foreground, system.background) == ("#111111", "#eeeeee"), \
+    (system.foreground, system.background)
 
 print("theme picker tests passed ({} themes offered)".format(len(THEMES)))
 

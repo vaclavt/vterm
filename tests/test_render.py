@@ -191,16 +191,29 @@ command.trim_history(None, terminal)
 assert terminal.view.text == before, \
     "alt screen view was trimmed: {!r}".format(terminal.view.text)
 
-# the configured cap still applies on the primary screen
+# the configured cap still applies on the primary screen: that many rows of
+# scrollback above the screen
 terminal, stream = make_terminal(rows=5, scrollback=20)
 terminal.offset = 40
 terminal.view = FakeView("\n".join("row {}".format(i) for i in range(40)))
 command = make_command(terminal)
 command.trim_history(None, terminal)
 rows_left = terminal.view.text.count("\n") + 1
-assert rows_left <= 20, rows_left
+assert rows_left <= 25, rows_left
 assert "row 39" in terminal.view.text, "newest rows must survive"
 assert "row 0" not in terminal.view.text, "oldest rows must be dropped"
+
+# a cap below the screen height (0: no scrollback) must never cut the screen
+terminal, stream = make_terminal(rows=10, cols=20, scrollback=0)
+command = make_command(terminal)
+for i in range(3):
+    stream.feed("\r\n".join("row{}".format(i * 10 + j) for j in range(10)) + "\r\n")
+    command.update_lines(None, terminal)
+    command.trim_trailing_spaces(None, terminal)
+    command.trim_history(None, terminal)
+    terminal.screen.dirty.clear()
+assert terminal.offset >= 0, terminal.offset
+assert "row29" in terminal.view.text, terminal.view.text
 
 # below the cap nothing is dropped
 terminal, stream = make_terminal(rows=5, scrollback=5000)
